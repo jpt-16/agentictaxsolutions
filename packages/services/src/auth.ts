@@ -1,5 +1,5 @@
 import { eq, sql } from "drizzle-orm";
-import { users, withoutTenant, withTenant, type Db } from "@taxops/db";
+import { recordAudit, users, withoutTenant, withTenant, type Db } from "@taxops/db";
 import type { Role } from "@taxops/core";
 import type { Session } from "./context";
 
@@ -31,5 +31,14 @@ export async function loadSession(db: Db, tenantId: string, userId: string): Pro
     const [u] = await tx.select().from(users).where(eq(users.id, userId));
     if (!u || !u.isActive) return null;
     return { userId: u.id, tenantId: u.tenantId, role: u.role, name: u.name, email: u.email, departmentId: u.departmentId, entityId: u.entityId };
+  });
+}
+
+/** Records a successful sign-in in the tenant's audit trail (who, when, and by which method). */
+export async function recordLogin(db: Db, tenantId: string, userId: string, method: "sso" | "dev"): Promise<void> {
+  await withTenant(db, { tenantId, userId }, async (tx) => {
+    const [u] = await tx.select({ name: users.name, role: users.role }).from(users).where(eq(users.id, userId));
+    if (!u) return;
+    await recordAudit(tx, { tenantId, actor: { type: "user", id: userId, label: u.name }, action: "auth.login", entityType: "user", entityId: userId, summary: `${u.name} signed in (${method === "sso" ? "single sign-on" : "development sign-in"})`, after: { method } });
   });
 }

@@ -61,7 +61,7 @@ export default async function RequestPage({ params, searchParams }: {
             <span className="inline-flex items-center gap-1.5"><User2 size={14} aria-hidden /> Created by {r.createdByName}</span>
           </span>
         }
-        actions={<RequestActions requestId={r.id} canPublish={r.can.publish} canClose={r.can.close} />}
+        actions={<>{r.can.edit && <Link href={`/requests/${r.id}/edit`} className="btn btn-secondary">Edit draft</Link>}<RequestActions requestId={r.id} canPublish={r.can.publish} canClose={r.can.close} /></>}
       />
 
       {notice && (

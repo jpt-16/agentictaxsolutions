@@ -24,6 +24,7 @@ jobs:
       - run: pnpm install --frozen-lockfile
       - name: Bootstrap database roles
         run: psql -h localhost -p 5433 -U postgres -d postgres -f scripts/bootstrap-db.sql
+      - run: pnpm audit --prod
       - run: pnpm typecheck
       - run: pnpm test
       - run: pnpm build

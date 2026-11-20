@@ -17,7 +17,12 @@ BEGIN
     -- The AI/agent worker. Has NO table privileges: it can only call the jobs_* functions granted in migrations.
     CREATE ROLE taxops_worker LOGIN PASSWORD 'taxops_worker' NOSUPERUSER NOBYPASSRLS NOCREATEDB NOCREATEROLE;
   END IF;
+  IF NOT EXISTS (SELECT FROM pg_roles WHERE rolname = 'taxops_ops') THEN
+    -- Owns exactly one function (ops_metrics, aggregate counts only). BYPASSRLS so it can count across tenants; cannot log in.
+    CREATE ROLE taxops_ops NOLOGIN NOSUPERUSER BYPASSRLS;
+  END IF;
 END $$;
+GRANT taxops_ops TO taxops_owner;
 
 SELECT 'CREATE DATABASE taxops OWNER taxops_owner' WHERE NOT EXISTS (SELECT FROM pg_database WHERE datname = 'taxops') \gexec
 SELECT 'CREATE DATABASE taxops_test OWNER taxops_owner' WHERE NOT EXISTS (SELECT FROM pg_database WHERE datname = 'taxops_test') \gexec
@@ -26,9 +31,9 @@ ALTER DATABASE taxops OWNER TO taxops_owner;
 \c taxops
 ALTER SCHEMA public OWNER TO taxops_owner;
 REVOKE ALL ON SCHEMA public FROM PUBLIC;
-GRANT USAGE ON SCHEMA public TO taxops_app, taxops_worker;
+GRANT USAGE ON SCHEMA public TO taxops_app, taxops_worker, taxops_ops;
 
 \c taxops_test
 ALTER SCHEMA public OWNER TO taxops_owner;
 REVOKE ALL ON SCHEMA public FROM PUBLIC;
-GRANT USAGE ON SCHEMA public TO taxops_app, taxops_worker;
+GRANT USAGE ON SCHEMA public TO taxops_app, taxops_worker, taxops_ops;

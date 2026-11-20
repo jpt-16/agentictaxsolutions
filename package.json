@@ -16,6 +16,7 @@
     "db:seed": "pnpm --filter @taxops/services seed",
     "db:reset": "pnpm --filter @taxops/services reset",
     "tenant:flags": "pnpm --filter @taxops/services tenant-flags",
-    "worker:once": "cd services/agent-worker && ${PYTHON:-python3} -m taxops_agents --once"
+    "worker:once": "cd services/agent-worker && ${PYTHON:-python3} -m taxops_agents --once",
+    "notify:sweep": "pnpm --filter @taxops/services notify-sweep"
   }
 }

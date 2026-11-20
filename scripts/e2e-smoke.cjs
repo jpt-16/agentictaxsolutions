@@ -70,6 +70,11 @@ const BASE = process.env.BASE_URL ?? "http://localhost:3000";
   const XLSX_MIME = "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet";
 
   await login("Sam Whitfield"); // Accounting – Americas: assigned
+  await page.goto(`${BASE}/notifications`);
+  await page.getByText("New request: E2E smoke – FY2025 depreciation schedules").waitFor();
+  await page.getByText("New request: E2E smoke – FY2025 depreciation schedules").click(); // marks it read and opens the request
+  await page.waitForURL(requestUrl);
+  step("assignee was notified of the new request; opening the notification marks it read and navigates");
   await page.goto(requestUrl);
 
   // A virus is blocked in the UI: nothing is submitted
@@ -255,6 +260,84 @@ const BASE = process.env.BASE_URL ?? "http://localhost:3000";
     assert.ok(audit.includes(a), `audit log should include ${a}`);
   }
   step("auditor sees the full trail and the hash chain verifies");
+
+  // Audit export: download, then verify offline with nothing but SHA-256.
+  await page.goto(`${BASE}/audit`);
+  const [csvDl] = await Promise.all([page.waitForEvent("download"), page.getByRole("button", { name: "CSV" }).click()]);
+  assert.match(csvDl.suggestedFilename(), /^audit-.*\.csv$/);
+  const csvPath = path.join(require("node:os").tmpdir(), `e2e-${Date.now()}.csv`);
+  await csvDl.saveAs(csvPath);
+  assert.match(require("node:fs").readFileSync(csvPath, "utf8").split("\r\n")[0], /^seq,occurred_at,actor_type,actor_label,action/);
+  const [jsonDl] = await Promise.all([page.waitForEvent("download"), page.getByRole("button", { name: "JSON" }).click()]);
+  const jsonPath = path.join(require("node:os").tmpdir(), `e2e-${Date.now()}.json`);
+  await jsonDl.saveAs(jsonPath);
+  const out = execSync(`node ${path.join(__dirname, "verify-audit-export.mjs")} ${jsonPath}`, { encoding: "utf8" });
+  assert.match(out, /OK: \d+ event\(s\) verified, contiguous from the genesis hash/);
+  step("auditor exported the audit log; the offline verifier confirmed the whole chain from the file alone");
+  await logout();
+
+  // Draft editing, and publishing makes it read-only
+  await login("Marcus Hale");
+  await page.goto(`${BASE}/requests/new`);
+  await page.fill("#title", "E2E editable draft request");
+  await page.fill("#due", "2027-04-01");
+  await page.fill('[aria-label="Item 1 title"]', "First draft item");
+  await page.click('label:has-text("Accounting – Americas") input');
+  await page.click('button:has-text("Save draft")');
+  await page.waitForURL(/\/requests\/[0-9a-f-]{36}$/);
+  const draftUrl = page.url();
+  await page.getByRole("link", { name: "Edit draft" }).click();
+  await page.fill("#title", "E2E edited draft request");
+  await page.fill('[aria-label="Item 1 title"]', "Renamed draft item");
+  await page.click('button:has-text("Save changes")');
+  await page.waitForURL(draftUrl);
+  await page.getByText("E2E edited draft request").first().waitFor();
+  await page.getByText("Renamed draft item").waitFor();
+  await page.click('button:has-text("Publish request")');
+  await page.waitForSelector('span.badge:has-text("Open")');
+  assert.equal(await page.getByRole("link", { name: "Edit draft" }).count(), 0);
+  await page.goto(`${draftUrl}/edit`);
+  await page.waitForURL(draftUrl); // a published request redirects away from the editor
+  step("manager edited a draft; once published it is read-only and the editor redirects");
+  await logout();
+
+  // Deadline sweep notifies the people who owe overdue work, once
+  execSync("pnpm notify:sweep", { cwd: path.join(__dirname, ".."), stdio: "pipe", env: process.env });
+  await login("Lena Fischer");
+  await page.goto(`${BASE}/notifications`);
+  await page.getByText(/^Overdue: Q4 intercompany balance confirmations/).first().waitFor();
+  step("deadline sweep sent an overdue reminder to an assignee of the overdue request");
+  await logout();
+
+  // Administration: AI governance switches and people management (tenant admin only)
+  await login("Priya Raman");
+  await page.goto(`${BASE}/settings`);
+  await page.getByLabel("Allow an external AI model").check();
+  await page.getByRole("button", { name: "Save" }).first().click();
+  await page.waitForSelector("text=Saved.");
+  await page.getByLabel("AI extraction").uncheck(); // turning AI off also turns external use off
+  await page.getByRole("button", { name: "Save" }).first().click();
+  await page.waitForSelector("text=Saved.");
+  await page.getByRole("button", { name: "Add a person" }).click();
+  await page.fill("#nu-name", "E2E New Person");
+  await page.fill("#nu-email", "e2e.person@northwind.example");
+  await page.getByRole("button", { name: "Add person" }).click();
+  await page.getByText("e2e.person@northwind.example").waitFor();
+  await page.getByLabel("Role for Priya Raman").waitFor();
+  assert.equal(await page.getByLabel("Role for Priya Raman").isDisabled(), true); // cannot change your own role
+  step("tenant admin changed AI governance switches and added a person; self-demotion is blocked");
+  await page.goto(`${BASE}/audit?cat=user.`);
+  await page.getByText(/Added E2E New Person as Contributor/).waitFor(); // administration is itself audited
+  await logout();
+
+  // Operations endpoints
+  const health = await (await fetch(`${BASE}/api/health`)).json();
+  assert.deepEqual(health, { status: "ok" });
+  const ready = await (await fetch(`${BASE}/api/ready`)).json();
+  assert.equal(ready.status, "ready");
+  assert.equal((await fetch(`${BASE}/api/metrics`)).status, 404); // disabled until METRICS_TOKEN is set
+  assert.ok((await fetch(`${BASE}/login`)).headers.get("x-request-id"));
+  step("health, readiness and request-id work; metrics are off without a token");
 
   await browser.close();
   console.log("E2E smoke test passed.");

@@ -415,3 +415,28 @@ export const ruleSettings = pgTable(
     foreignKey({ columns: [t.tenantId, t.updatedBy], foreignColumns: [users.tenantId, users.id], name: "rule_settings_user_fk" }),
   ],
 );
+
+/**
+ * In-app notifications. A user can only ever read or mark-read THEIR OWN (row policy on app.user_id); anyone in the tenant
+ * can create them (fan-out happens inside the workflow transaction). `dedupe_key` makes sweeps and retries idempotent.
+ */
+export const notifications = pgTable(
+  "notifications",
+  {
+    id: id(),
+    tenantId: tenantId().references(() => tenants.id),
+    userId: uuid("user_id").notNull(),
+    type: text("type").notNull(),
+    title: text("title").notNull(),
+    body: text("body").notNull().default(""),
+    link: text("link"),
+    dedupeKey: text("dedupe_key"),
+    readAt: timestamp("read_at", { withTimezone: true }),
+    createdAt: createdAt(),
+  },
+  (t) => [
+    foreignKey({ columns: [t.tenantId, t.userId], foreignColumns: [users.tenantId, users.id], name: "notifications_user_fk" }),
+    unique("notifications_dedupe").on(t.tenantId, t.userId, t.dedupeKey),
+    index("notifications_inbox").on(t.tenantId, t.userId, t.readAt, t.createdAt),
+  ],
+);

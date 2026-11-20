@@ -1,6 +1,6 @@
 import Link from "next/link";
 import { notFound } from "next/navigation";
-import { History, ShieldAlert, ShieldCheck } from "lucide-react";
+import { Download, History, ShieldAlert, ShieldCheck } from "lucide-react";
 import { can } from "@taxops/core";
 import { listAudit, verifyAuditTrail } from "@taxops/services";
 import { requireContext } from "@/lib/auth";
@@ -12,6 +12,7 @@ export const dynamic = "force-dynamic";
 const PAGE_SIZE = 30;
 const CATEGORIES = [
   { key: "", label: "All activity" }, { key: "request.", label: "Requests" }, { key: "item.", label: "Items & reviews" }, { key: "comment.", label: "Comments" },
+  { key: "file.", label: "Files" }, { key: "proposal.", label: "AI results" }, { key: "user.", label: "People" }, { key: "auth.", label: "Sign-ins" },
 ];
 type Search = { cat?: string; q?: string; page?: string; verify?: string };
 
@@ -41,7 +42,15 @@ export default async function AuditPage({ searchParams }: { searchParams: Promis
   return (
     <>
       <PageHeader title="Audit history" subtitle="An append-only record of every action and change, who made it, and when."
-        actions={<Link href={qs({ verify: "1" })} className="btn btn-secondary"><ShieldCheck size={15} aria-hidden /> Verify integrity</Link>} />
+        actions={
+          <>
+            <Link href={qs({ verify: "1" })} className="btn btn-secondary"><ShieldCheck size={15} aria-hidden /> Verify integrity</Link>
+            <form action="/api/audit/export" method="post" className="flex gap-1.5" encType="multipart/form-data">
+              {cat && <input type="hidden" name="cat" value={cat} />}
+              <button name="format" value="csv" className="btn btn-secondary" type="submit"><Download size={15} aria-hidden /> CSV</button>
+              <button name="format" value="json" className="btn btn-secondary" type="submit" title="Includes the hashed text of every event, for offline verification"><Download size={15} aria-hidden /> JSON</button>
+            </form>
+          </>} />
 
       {verification && (
         <p role="status" className="mb-4 flex items-start gap-2.5 rounded-xl px-4 py-3 text-[13.5px]"

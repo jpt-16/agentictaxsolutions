@@ -3,8 +3,8 @@
 An enterprise platform where tax teams request data from departments and subsidiaries, collect it, and (in later
 phases) have AI agents standardize and validate it, with human review and a tamper-evident audit trail.
 
-> **Status: Phases 0–3.** Workflow core, secure file handling, and the first AI agent (trial-balance extraction with
-> human review) are built and tested. The validation agent is Phase 4. **All data is fictional. Do not connect real corporate data.**
+> **Status: all planned phases (0–5) built.** Workflow, secure files, AI extraction and validation with human review, notifications,
+> administration, SSO, audit export and operational tooling. See `docs/architecture.md` for what is deliberately not done yet. **All data is fictional. Do not connect real corporate data.**
 
 ## What works today
 
@@ -55,7 +55,8 @@ Sign in by picking a persona on the login page (development-only, no password):
 ```bash
 pnpm typecheck
 pnpm test                          # core + database security + services (needs the local Postgres above)
-node scripts/e2e-smoke.cjs         # full UI workflow incl. uploads; needs `pnpm dev` + fresh seed + Playwright
+node scripts/e2e-smoke.cjs         # full UI workflow; needs `pnpm dev` + fresh seed + Playwright (+ WORKER_CMD for the AI steps)
+node scripts/e2e-sso.cjs           # SSO flow against the local mock identity provider (starts its own server)
 cd services/agent-worker && pip install -e ".[dev]" && pytest   # worker tests need the Postgres test DB (run `pnpm test` first)
 ```
 
@@ -83,3 +84,14 @@ The database tests run against a separate `taxops_test` database that they reset
 | `docs/architecture.md` | Decisions, security model, data model, roadmap, known limitations |
 
 See [docs/architecture.md](docs/architecture.md) before changing anything security-relevant.
+
+## Operations cheat sheet
+
+| Task | Command |
+|---|---|
+| Process uploaded files / validation | `pnpm worker:once` (or run `python -m taxops_agents` as a service) |
+| Deadline reminders (run on a schedule) | `pnpm notify:sweep` |
+| Tenant AI switches from the CLI | `pnpm tenant:flags <slug> --ai on --external-llm off` |
+| Verify an audit export offline | `node scripts/verify-audit-export.mjs audit.json` |
+| Local identity provider for SSO | `node scripts/mock-idp.mjs` |
+| Liveness / readiness / metrics | `/api/health`, `/api/ready`, `/api/metrics` (bearer `METRICS_TOKEN`) |

@@ -43,7 +43,7 @@ OutputHandler = Callable[[Job, AgentSpec, BaseModel], None]
 
 def _log_output(job: Job, spec: AgentSpec, output: BaseModel) -> None:
     # Phase 3 replaces this with persisting proposals for human review.
-    log.info("agent=%s job=%s produced %s", spec.name, job.id, type(output).__name__)
+    log.info("agent produced output", extra={"agent": spec.name, "job_id": job.id, "job_type": job.type, "tenant_id": job.tenant_id})
 
 
 class Worker:
@@ -99,7 +99,7 @@ class Worker:
             self._fail(conn, job, "ValidationError: payload does not match the event contract")
             return False
         except Exception as e:
-            log.exception("agent failed for job %s", job.id)
+            log.exception("agent failed", extra={"job_id": job.id, "job_type": job.type, "tenant_id": job.tenant_id, "attempt": job.attempts})
             self._fail(conn, job, f"{type(e).__name__}: agent run failed")
             return False
         self._complete(conn, job)

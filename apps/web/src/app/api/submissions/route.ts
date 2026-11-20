@@ -3,6 +3,7 @@ import { submitWithFiles } from "@taxops/services";
 import { getContext } from "@/lib/auth";
 import { fileDeps } from "@/lib/files";
 import { errorResponse, isSameOrigin } from "@/lib/http";
+import { limiter, tooMany } from "@/lib/rate-limit";
 
 export const dynamic = "force-dynamic";
 const MAX_BODY = 110 * 1024 * 1024; // 100 MB of files plus multipart overhead
@@ -11,6 +12,8 @@ export async function POST(req: Request) {
   if (!isSameOrigin(req)) return Response.json({ ok: false, error: "Cross-origin request refused." }, { status: 403 });
   const ctx = await getContext();
   if (!ctx) return Response.json({ ok: false, error: "Please sign in again." }, { status: 401 });
+  const rl = limiter("uploads", 30, 60_000).hit(ctx.session.userId);
+  if (!rl.ok) return tooMany(rl.retryAfterSec);
   const declared = Number(req.headers.get("content-length") ?? 0);
   if (declared > MAX_BODY) return Response.json({ ok: false, error: "The upload is too large." }, { status: 413 });
 

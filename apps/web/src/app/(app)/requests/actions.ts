@@ -1,7 +1,7 @@
 "use server";
 import { revalidatePath } from "next/cache";
 import {
-  addComment, closeRequest, createRequest, publishRequest, reviewItem,
+  addComment, closeRequest, createRequest, publishRequest, reviewItem, updateDraftRequest,
 } from "@taxops/services";
 import { requireContext } from "@/lib/auth";
 import { guard, type ActionResult } from "@/lib/actions";
@@ -57,4 +57,19 @@ export async function addCommentAction(requestId: string, body: string, itemId?:
   const r = await guard(() => addComment(ctx, requestId, { body, itemId }));
   refresh(requestId);
   return r;
+}
+
+export async function updateDraftAction(
+  requestId: string, input: unknown, publish: boolean,
+): Promise<ActionResult<{ id: string; reference: string; publishError?: string }>> {
+  const ctx = await requireContext();
+  const saved = await guard(() => updateDraftRequest(ctx, requestId, input));
+  if (!saved.ok) return saved;
+  let publishError: string | undefined;
+  if (publish) {
+    const pub = await guard(() => publishRequest(ctx, requestId));
+    if (!pub.ok) publishError = pub.error;
+  }
+  refresh(requestId);
+  return { ok: true, data: { id: requestId, reference: saved.data!.reference, publishError } };
 }

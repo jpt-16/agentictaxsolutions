@@ -17,9 +17,16 @@ export function devAuthEnabled(): boolean {
   return process.env.AUTH_MODE === "dev" && process.env.NODE_ENV !== "production";
 }
 
+export function ssoEnabled(): boolean {
+  return process.env.AUTH_MODE === "oidc";
+}
+
 export function assertAuthConfig() {
   if (process.env.AUTH_MODE === "dev" && process.env.NODE_ENV === "production") {
     throw new Error("AUTH_MODE=dev is not allowed in production.");
+  }
+  if (process.env.NODE_ENV === "production" && process.env.AUTH_MODE !== "oidc") {
+    throw new Error("Production requires AUTH_MODE=oidc (single sign-on).");
   }
 }
 

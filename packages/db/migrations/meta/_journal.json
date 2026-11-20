@@ -57,6 +57,20 @@
       "when": 1795193870394,
       "tag": "0007_validation_security",
       "breakpoints": true
+    },
+    {
+      "idx": 8,
+      "version": "7",
+      "when": 1795194870690,
+      "tag": "0008_orange_molly_hayes",
+      "breakpoints": true
+    },
+    {
+      "idx": 9,
+      "version": "7",
+      "when": 1795194871602,
+      "tag": "0009_hardening",
+      "breakpoints": true
     }
   ]
 }

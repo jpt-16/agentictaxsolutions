@@ -3,7 +3,7 @@ import { ShieldCheck, FlaskConical } from "lucide-react";
 import { ROLE_LABELS, ROLES, type Role } from "@taxops/core";
 import { listDevLoginUsers } from "@taxops/services";
 import { db } from "@/lib/db";
-import { devAuthEnabled, getContext } from "@/lib/auth";
+import { devAuthEnabled, getContext, ssoEnabled } from "@/lib/auth";
 import { Avatar } from "@/components/ui";
 import { signInAs } from "./actions";
 
@@ -16,6 +16,12 @@ const ROLE_BLURB: Record<Role, string> = {
   contributor: "Department or subsidiary staff who provide data.",
   auditor: "Read-only access including the full audit history.",
   tenant_admin: "Administers the tenant; read-only on tax content.",
+};
+
+const SSO_ERRORS: Record<string, string> = {
+  sso: "We couldn’t complete the sign-in. Please try again.",
+  "no-account": "Your identity was verified, but you don’t have an account here yet. Ask your administrator to add you.",
+  email: "Your identity provider didn’t confirm a verified email address for you.",
 };
 
 export default async function LoginPage({ searchParams }: { searchParams: Promise<{ error?: string }> }) {
@@ -38,8 +44,14 @@ export default async function LoginPage({ searchParams }: { searchParams: Promis
 
       {!enabled ? (
         <div className="rounded-xl border border-line bg-surface p-6">
-          <p className="font-medium text-ink">Single sign-on required</p>
-          <p className="mt-1 text-muted">Sign in through your organization’s identity provider. SSO is not configured for this environment yet.</p>
+          <p className="font-medium text-ink">Single sign-on</p>
+          {error && <p role="alert" className="mt-2 text-[13px]" style={{ color: "var(--red-fg)" }}>{SSO_ERRORS[error] ?? SSO_ERRORS.sso}</p>}
+          {ssoEnabled() ? (
+            <>
+              <p className="mb-4 mt-1 text-muted">Sign in with your organization’s identity provider.</p>
+              <a href="/api/auth/login" className="btn btn-primary">Continue with single sign-on</a>
+            </>
+          ) : <p className="mt-1 text-muted">Single sign-on is not configured for this environment yet. Contact your administrator.</p>}
         </div>
       ) : (
         <>

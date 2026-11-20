@@ -1,6 +1,6 @@
 "use server";
 import { redirect } from "next/navigation";
-import { resolveUserByEmail } from "@taxops/services";
+import { recordLogin, resolveUserByEmail } from "@taxops/services";
 import { db } from "@/lib/db";
 import { devAuthEnabled, endSession, startSession } from "@/lib/auth";
 
@@ -10,6 +10,7 @@ export async function signInAs(formData: FormData) {
   const found = await resolveUserByEmail(db, email);
   if (!found || !found.isActive) redirect("/login?error=unknown");
   await startSession(found.tenantId, found.userId);
+  await recordLogin(db, found.tenantId, found.userId, "dev");
   redirect("/");
 }
 

@@ -3,7 +3,7 @@ import { useMemo, useState, useTransition } from "react";
 import { useRouter } from "next/navigation";
 import { Plus, Trash2, X, Search } from "lucide-react";
 import { DATA_TYPES, DATA_TYPE_LABELS, PRIORITIES, type DataType } from "@taxops/core";
-import { createRequestAction } from "../actions";
+import { createRequestAction, updateDraftAction } from "../actions";
 import { cn } from "@/components/ui";
 
 type Option = { id: string; label: string; sub?: string };
@@ -12,18 +12,25 @@ interface Item { title: string; description: string; dataType: DataType; require
 
 const KIND_LABEL: Record<Kind, string> = { department: "Departments", entity: "Subsidiaries", user: "People" };
 
-export function NewRequestForm({ year, departments, entities, people }: {
-  year: number; departments: Option[]; entities: Option[]; people: Option[];
+export interface RequestDraft {
+  title: string; description: string; taxYear: number; dueDate: string; priority: (typeof PRIORITIES)[number];
+  items: Item[]; assignees: { type: Kind; id: string; label: string }[];
+}
+
+export function NewRequestForm({ year, departments, entities, people, requestId, initial }: {
+  year: number; departments: Option[]; entities: Option[]; people: Option[]; requestId?: string; initial?: RequestDraft;
 }) {
+  const editing = !!requestId;
   const router = useRouter();
   const [pending, start] = useTransition();
-  const [title, setTitle] = useState("");
-  const [description, setDescription] = useState("");
-  const [taxYear, setTaxYear] = useState(String(year));
-  const [dueDate, setDueDate] = useState("");
-  const [priority, setPriority] = useState<(typeof PRIORITIES)[number]>("medium");
-  const [items, setItems] = useState<Item[]>([{ title: "", description: "", dataType: "trial_balance", required: true }]);
-  const [picked, setPicked] = useState<Record<string, { kind: Kind; id: string; label: string }>>({});
+  const [title, setTitle] = useState(initial?.title ?? "");
+  const [description, setDescription] = useState(initial?.description ?? "");
+  const [taxYear, setTaxYear] = useState(String(initial?.taxYear ?? year));
+  const [dueDate, setDueDate] = useState(initial?.dueDate ?? "");
+  const [priority, setPriority] = useState<(typeof PRIORITIES)[number]>(initial?.priority ?? "medium");
+  const [items, setItems] = useState<Item[]>(initial?.items.length ? initial.items : [{ title: "", description: "", dataType: "trial_balance", required: true }]);
+  const [picked, setPicked] = useState<Record<string, { kind: Kind; id: string; label: string }>>(
+    Object.fromEntries((initial?.assignees ?? []).map((a) => [`${a.type}:${a.id}`, { kind: a.type, id: a.id, label: a.label }])));
   const [kind, setKind] = useState<Kind>("department");
   const [filter, setFilter] = useState("");
   const [error, setError] = useState<string | null>(null);
@@ -46,11 +53,12 @@ export function NewRequestForm({ year, departments, entities, people }: {
   function submit(publish: boolean) {
     setError(null); setFieldErrors({});
     start(async () => {
-      const res = await createRequestAction({
+      const payload = {
         title, description, taxYear, dueDate, priority,
         items: items.filter((i) => i.title.trim()),
         assignees: Object.values(picked).map((p) => ({ type: p.kind, id: p.id })),
-      }, publish);
+      };
+      const res = editing ? await updateDraftAction(requestId!, payload, publish) : await createRequestAction(payload, publish);
       if (!res.ok) { setError(res.error); setFieldErrors(res.fieldErrors ?? {}); return; }
       const { id, publishError } = res.data!;
       router.push(`/requests/${id}${publishError ? `?notice=${encodeURIComponent("Saved as a draft. " + publishError)}` : ""}`);
@@ -185,8 +193,8 @@ export function NewRequestForm({ year, departments, entities, people }: {
 
         {error && <p role="alert" className="rounded-lg px-3 py-2 text-[13px]" style={{ background: "var(--red-bg)", color: "var(--red-fg)" }}>{error}</p>}
         <div className="flex gap-2">
-          <button type="button" className="btn btn-primary flex-1" disabled={pending} onClick={() => submit(true)}>{pending ? "Saving…" : "Publish request"}</button>
-          <button type="submit" className="btn btn-secondary" disabled={pending}>Save draft</button>
+          <button type="button" className="btn btn-primary flex-1" disabled={pending} onClick={() => submit(true)}>{pending ? "Saving…" : editing ? "Save & publish" : "Publish request"}</button>
+          <button type="submit" className="btn btn-secondary" disabled={pending}>{editing ? "Save changes" : "Save draft"}</button>
         </div>
         <p className="hint">Drafts are only visible to tax staff. Publishing opens the request for submissions from the people you assigned.</p>
       </aside>

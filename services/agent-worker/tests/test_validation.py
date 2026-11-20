@@ -174,3 +174,10 @@ def test_every_catalogued_rule_has_an_implementation():
     data = TBData("S", [Row(**{k: r[k] for k in ("position", "sheet", "source_row", "values", "cells", "issues")}) for r in rows(GOOD)], {}, {})
     _, ran = run_rules(data, {})
     assert ran == [r["id"] for r in rule_catalog()]
+
+
+def test_display_figures_are_grouped_but_metrics_stay_exact():
+    spec = [("1000", "Cash", 1250000, 0), ("2000", "Pay", 0, 1237550), ("3000", "Cap", 0, 1000)]
+    f = run(source(spec))[0].proposals[0]
+    assert f.title == "Debits and credits differ by 11,450" and "1,250,000" in f.detail
+    assert f.payload["metrics"]["difference"] == "11450" and f.payload["metrics"]["total_debit"] == "1250000"

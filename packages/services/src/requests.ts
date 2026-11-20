@@ -11,6 +11,7 @@ import {
 } from "@taxops/db";
 import type { StoredFile } from "./files/types";
 import { extractionByFile, findingsForRequest } from "./proposals";
+import { assigneesOfRequest, notify, usersWithPermission } from "./notifications";
 import { isPreviewable } from "./files/validate";
 import { actorOf, auditActorOf, NotFoundError, scoped, todayOf, type ServiceContext } from "./context";
 
@@ -220,6 +221,7 @@ export async function getRequestDetail(ctx: ServiceContext, requestId: string) {
         close: can(actor.role, "request.close") && req.status === "approved",
         comment: can(actor.role, "comment.create") && req.status !== "closed",
         reprocess: can(actor.role, "proposal.review"),
+        edit: can(actor.role, "request.update") && req.status === "draft",
       },
     };
   });
@@ -273,6 +275,8 @@ export async function publishRequest(ctx: ServiceContext, requestId: string) {
     const itemCount = (await tx.select({ n: sql<number>`count(*)::int` }).from(requestItems).where(eq(requestItems.requestId, requestId)))[0]!.n;
     assertCanPublish(req.status, itemCount, refs.length);
     await tx.update(requests).set({ status: "open", publishedAt: new Date(), updatedAt: new Date() }).where(eq(requests.id, requestId));
+    await notify(tx, ctx.session.tenantId, await assigneesOfRequest(tx, requestId),
+      { type: "request_assigned", title: `New request: ${req.title}`, body: `${req.reference} is due ${req.dueDate}.`, link: `/requests/${requestId}`, dedupeKey: `published:${requestId}` });
     await recordAudit(tx, {
       tenantId: ctx.session.tenantId, actor: auditActorOf(ctx), action: "request.published", entityType: "request",
       entityId: requestId, requestRef: requestId, summary: `Published ${req.reference} to ${refs.length} assignee(s)`,
@@ -302,6 +306,10 @@ async function syncRequestStatus(tx: Tx, ctx: ServiceContext, req: { id: string;
   const next = deriveRequestStatus(req.status, items.map((i) => i.status));
   if (next === req.status) return;
   await tx.update(requests).set({ status: next, updatedAt: new Date() }).where(eq(requests.id, req.id));
+  if (next === "approved") {
+    const [full] = await tx.select({ createdBy: requests.createdBy, title: requests.title }).from(requests).where(eq(requests.id, req.id));
+    if (full) await notify(tx, ctx.session.tenantId, [full.createdBy], { type: "request_approved", title: `Ready to close: ${full.title}`, body: `${req.reference}: every item is approved.`, link: `/requests/${req.id}`, dedupeKey: `approved:${req.id}` });
+  }
   await recordAudit(tx, {
     tenantId: ctx.session.tenantId, actor: auditActorOf(ctx), action: "request.status_changed", entityType: "request",
     entityId: req.id, requestRef: req.id, summary: `${req.reference} moved from “${REQUEST_STATUS_LABELS[req.status]}” to “${REQUEST_STATUS_LABELS[next]}”`,
@@ -352,6 +360,8 @@ export async function submitItem(ctx: ServiceContext, itemId: string, rawInput: 
       entityId: itemId, requestRef: req.id, summary: `Submitted "${item.title}" (v${version}) on ${req.reference}`,
       before: { status: item.status }, after: { status: "submitted", version, note: input.note, files: attachments.map((f) => ({ id: f.id, name: f.name, size: f.size, sha256: f.sha256, scanner: f.scanner })) },
     });
+    await notify(tx, ctx.session.tenantId, (await usersWithPermission(tx, "item.review")).map((u) => u.id).filter((id) => id !== ctx.session.userId),
+      { type: "submission", title: `Submission to review: ${item.title}`, body: `${req.reference} · v${version}`, link: `/requests/${req.id}#item-${itemId}`, dedupeKey: `submitted:${sub!.id}` });
     await syncRequestStatus(tx, ctx, req);
   });
 }
@@ -368,9 +378,13 @@ export async function reviewItem(ctx: ServiceContext, itemId: string, rawInput: 
     if (violatesSegregationOfDuties(ctx.session.userId, latest.submittedBy)) {
       throw new ForbiddenError("Segregation of duties: you cannot review your own submission.");
     }
-    await tx.insert(reviews).values({
+    const [rv] = await tx.insert(reviews).values({
       tenantId: ctx.session.tenantId, submissionId: latest.id, reviewerId: ctx.session.userId,
       decision: input.decision, rationale: input.rationale,
+    }).returning({ id: reviews.id });
+    await notify(tx, ctx.session.tenantId, [latest.submittedBy], {
+      type: "review", title: input.decision === "approved" ? `Approved: ${item.title}` : `Changes requested: ${item.title}`,
+      body: input.decision === "approved" ? `${req.reference}` : input.rationale, link: `/requests/${req.id}#item-${itemId}`, dedupeKey: `review:${rv!.id}`,
     });
     await tx.update(requestItems).set({ status: input.decision, updatedAt: new Date() }).where(eq(requestItems.id, itemId));
     await recordAudit(tx, {
@@ -405,5 +419,43 @@ export async function addComment(ctx: ServiceContext, requestId: string, rawInpu
       entityId: c!.id, requestRef: requestId, summary: `Commented on ${req.reference}`,
       after: { itemId: input.itemId ?? null, body: input.body },
     });
+  });
+}
+
+
+/** Edit a DRAFT request in place (title, dates, items, assignees). Published requests are read-only: the database also refuses deletes then. */
+export async function updateDraftRequest(ctx: ServiceContext, requestId: string, rawInput: unknown) {
+  assertCan(ctx.session.role, "request.update");
+  const input = createRequestSchema.parse(rawInput);
+  return scoped(ctx, async (tx) => {
+    const { req } = await loadVisibleRequest(tx, ctx, requestId, true);
+    if (req.status !== "draft") throw new InvalidTransitionError("Only drafts can be edited. A published request is read-only.");
+    const tenantId = ctx.session.tenantId;
+    const beforeItems = await tx.select({ title: requestItems.title }).from(requestItems).where(eq(requestItems.requestId, requestId)).orderBy(asc(requestItems.position));
+    const beforeAssignees = await tx.select({ id: assignments.id }).from(assignments).where(eq(assignments.requestId, requestId));
+    try {
+      await tx.update(requests).set({ title: input.title, description: input.description, taxYear: input.taxYear, dueDate: input.dueDate, priority: input.priority, updatedAt: new Date() }).where(eq(requests.id, requestId));
+      await tx.delete(assignments).where(eq(assignments.requestId, requestId));
+      await tx.delete(requestItems).where(eq(requestItems.requestId, requestId));
+      if (input.items.length) {
+        await tx.insert(requestItems).values(input.items.map((it, i) => ({ tenantId, requestId, position: i + 1, title: it.title, description: it.description, dataType: it.dataType, required: it.required })));
+      }
+      if (input.assignees.length) {
+        await tx.insert(assignments).values(input.assignees.map((a) => ({
+          tenantId, requestId, assigneeType: a.type,
+          departmentId: a.type === "department" ? a.id : null, entityId: a.type === "entity" ? a.id : null, userId: a.type === "user" ? a.id : null,
+        })));
+      }
+    } catch (e: any) {
+      for (let c = e; c; c = c.cause) if (c.code === "23503") throw new InvalidTransitionError("An item that already has comments cannot be removed from the draft.");
+      throw e;
+    }
+    await recordAudit(tx, {
+      tenantId, actor: auditActorOf(ctx), action: "request.updated", entityType: "request", entityId: requestId, requestRef: requestId,
+      summary: `Edited draft ${req.reference} "${input.title}"`,
+      before: { title: req.title, dueDate: req.dueDate, priority: req.priority, items: beforeItems.map((i) => i.title), assignees: beforeAssignees.length },
+      after: { title: input.title, dueDate: input.dueDate, priority: input.priority, items: input.items.map((i) => i.title), assignees: input.assignees.length },
+    });
+    return { id: requestId, reference: req.reference };
   });
 }

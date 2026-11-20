@@ -15,7 +15,7 @@ export async function resetTestDb(): Promise<void> {
     await owner.db.execute(sql`drop schema if exists drizzle cascade`);
     await owner.db.execute(sql`create schema public authorization taxops_owner`);
     await owner.db.execute(sql`revoke all on schema public from public`);
-    await owner.db.execute(sql`grant usage on schema public to taxops_app, taxops_worker`);
+    await owner.db.execute(sql`grant usage on schema public to taxops_app, taxops_worker, taxops_ops`);
   } finally {
     await owner.close();
   }

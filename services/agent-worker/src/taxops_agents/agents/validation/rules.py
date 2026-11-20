@@ -86,6 +86,14 @@ def _ev(r: Row, note: str, keys: tuple[str, ...] = ("account_code", "debit", "cr
     return {"row": r.source_row, "sheet": r.sheet, "cells": [r.cells[k] for k in keys if k in r.cells], "note": note}
 
 
+def grouped(d: Decimal) -> str:
+    """Display form with thousands separators (titles and summaries only; metrics stay exact and ungrouped)."""
+    text = fmt(d)
+    whole, _, frac = text.lstrip("-").partition(".")
+    out = f"{int(whole):,}" + (f".{frac}" if frac else "")
+    return "-" + out if text.startswith("-") else out
+
+
 def _dec(params: dict[str, Any], key: str, default: str) -> Decimal:
     try:
         d = Decimal(str(params.get(key, default)))
@@ -114,8 +122,8 @@ def tb_footing(d: TBData, p: dict[str, Any]) -> list[Draft]:
     if target == target.to_integral_value() and int(target) % 9 == 0:
         hints.append("The difference is divisible by 9, which can indicate transposed digits.")
     return [Draft(
-        "tb_footing", RULE_BY_ID["tb_footing"].severity, f"Debits and credits differ by {fmt(target)}",
-        f"{side}: total debits {fmt(debit)}, total credits {fmt(credit)}, difference {fmt(target)}.",
+        "tb_footing", RULE_BY_ID["tb_footing"].severity, f"Debits and credits differ by {grouped(target)}",
+        f"{side}: total debits {grouped(debit)}, total credits {grouped(credit)}, difference {grouped(target)}.",
         "Check for a missing or one-sided posting, a mis-keyed amount, or an account left out of the export. " + " ".join(hints),
         d.sheet, {"total_debit": fmt(debit), "total_credit": fmt(credit), "difference": fmt(target), "side": side, "hints": hints}, ev,
     )]

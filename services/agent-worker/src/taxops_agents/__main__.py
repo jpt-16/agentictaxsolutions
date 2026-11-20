@@ -10,6 +10,7 @@ import threading
 from .agents.extraction import ExtractionAgent, RemapAgent
 from .agents.validation import ValidationAgent
 from .llm import build_gateway
+from .logging_setup import configure_logging
 from .registry import AgentRegistry
 from .storage import LocalBlobStorage, find_repo_root, resolve_storage_dir
 from .worker import Worker
@@ -39,7 +40,7 @@ def main() -> None:
     parser.add_argument("--once", action="store_true", help="drain the queue, then exit")
     args = parser.parse_args()
     _load_repo_env()
-    logging.basicConfig(level=os.environ.get("LOG_LEVEL", "INFO"), format="%(asctime)s %(levelname)s %(name)s %(message)s")
+    configure_logging()
     conninfo = os.environ.get("WORKER_DATABASE_URL")
     if not conninfo:
         raise SystemExit("WORKER_DATABASE_URL is required (the restricted taxops_worker role).")

@@ -175,9 +175,13 @@ describe("app role vs agent output", () => {
     for (const t of ["proposals", "extracted_rows", "agent_runs"]) await expectDbError(worker.db.execute(sql.raw(`select * from ${t} limit 1`)), /permission denied/i);
   });
 
-  it("tenants opt in: AI flags default to off and the app cannot flip them", async () => {
+  it("tenants opt in: AI flags default to off, and only a tenant admin (enforced in the database) can flip them", async () => {
     const flags = await withTenant(app.db, { tenantId: B.tenantId }, (tx) => tx.select({ a: s.tenants.aiExtractionEnabled, e: s.tenants.externalLlmEnabled }).from(s.tenants));
     expect(flags[0]).toEqual({ a: false, e: false });
-    await expectDbError(withTenant(app.db, { tenantId: B.tenantId }, (tx) => tx.execute(sql`update tenants set external_llm_enabled = true`)), /permission denied/i);
+    const flip = (userId?: string) => withTenant(app.db, { tenantId: B.tenantId, userId }, (tx) => tx.execute(sql`update tenants set external_llm_enabled = true`));
+    for (const who of [undefined, B.users.manager, B.users.reviewer, B.users.contributor]) await expectDbError(flip(who), /only tenant admins/);
+    await expectDbError(withTenant(app.db, { tenantId: B.tenantId, userId: B.users.admin }, (tx) => tx.execute(sql`update tenants set name = 'renamed'`)), /permission denied/i);
+    await flip(B.users.admin);
+    expect((await withTenant(app.db, { tenantId: B.tenantId }, (tx) => tx.select({ e: s.tenants.externalLlmEnabled }).from(s.tenants)))[0]!.e).toBe(true);
   });
 });

@@ -1,6 +1,6 @@
 import { LogOut, ShieldCheck } from "lucide-react";
 import { can, ROLE_LABELS } from "@taxops/core";
-import { pendingProposalCount } from "@taxops/services";
+import { pendingProposalCount, unreadCount } from "@taxops/services";
 import { requireContext, devAuthEnabled } from "@/lib/auth";
 import { signOut } from "../login/actions";
 import { SidebarNav, type NavItem } from "@/components/sidebar";
@@ -10,13 +10,15 @@ export default async function AppLayout({ children }: { children: React.ReactNod
   const ctx = await requireContext();
   const { role, name } = ctx.session;
   const pending = await pendingProposalCount(ctx);
+  const unread = await unreadCount(ctx);
   const nav: NavItem[] = [
     { href: "/", label: "Dashboard", icon: "dashboard" },
     { href: "/requests", label: "Information requests", icon: "requests" },
+    { href: "/notifications", label: "Notifications", icon: "notifications", badge: unread },
     ...(can(role, "proposal.read") ? [{ href: "/review", label: "AI review", icon: "review", badge: pending } as NavItem] : []),
     ...(can(role, "audit.read") ? [{ href: "/audit", label: "Audit history", icon: "audit" } as NavItem] : []),
     ...(can(role, "user.read") ? [{ href: "/directory", label: "Directory", icon: "directory" } as NavItem] : []),
-    ...(can(role, "rules.manage") ? [{ href: "/settings", label: "Settings", icon: "settings" } as NavItem] : []),
+    ...(can(role, "rules.manage") || can(role, "tenant.admin") ? [{ href: "/settings", label: "Settings", icon: "settings" } as NavItem] : []),
   ];
 
   return (

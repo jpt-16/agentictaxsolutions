@@ -60,7 +60,7 @@ export class MemoryStorage implements FileStorage {
 export function findRepoRoot(from: string = process.cwd()): string {
   let dir = path.resolve(from);
   for (;;) {
-    if (existsSync(path.join(dir, "pnpm-workspace.yaml"))) return dir;
+    if (existsSync(/* turbopackIgnore: true */ path.join(dir, "pnpm-workspace.yaml"))) return dir;
     const parent = path.dirname(dir);
     if (parent === dir) return path.resolve(from);
     dir = parent;

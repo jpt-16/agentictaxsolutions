@@ -10,7 +10,8 @@
     "reset": "tsx src/cli/reset.ts",
     "typecheck": "tsc -p .",
     "test": "vitest run",
-    "tenant-flags": "tsx src/cli/tenant-flags.ts"
+    "tenant-flags": "tsx src/cli/tenant-flags.ts",
+    "notify-sweep": "tsx src/cli/sweep.ts"
   },
   "dependencies": {
     "@taxops/core": "workspace:*",
