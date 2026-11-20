@@ -24,11 +24,13 @@ export const PERMISSIONS = [
   "user.read",
   "proposal.read", // see AI-generated proposals
   "proposal.review", // accept or reject them
+  "rules.manage", // switch validation rules on/off and tune them
+  "tenant.admin", // users and tenant-level AI switches
 ] as const;
 export type Permission = (typeof PERMISSIONS)[number];
 
 const MATRIX: Record<Role, readonly Permission[]> = {
-  tenant_admin: ["dashboard.read", "request.read.all", "audit.read", "user.read", "proposal.read"],
+  tenant_admin: ["dashboard.read", "request.read.all", "audit.read", "user.read", "proposal.read", "rules.manage", "tenant.admin"],
   tax_manager: [
     "dashboard.read",
     "request.read.all",
@@ -42,6 +44,7 @@ const MATRIX: Record<Role, readonly Permission[]> = {
     "user.read",
     "proposal.read",
     "proposal.review",
+    "rules.manage",
   ],
   tax_reviewer: ["dashboard.read", "request.read.all", "item.review", "comment.create", "user.read", "proposal.read", "proposal.review"],
   contributor: ["dashboard.read", "request.read.assigned", "item.submit", "comment.create"],

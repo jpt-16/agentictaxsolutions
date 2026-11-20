@@ -349,6 +349,9 @@ export const proposals = pgTable(
     itemId: uuid("item_id").notNull(),
     kind: proposalKindEnum("kind").notNull(),
     schemaKey: text("schema_key"),
+    // Findings point at the accepted extraction they were raised against, and at the rule that raised them.
+    sourceProposalId: uuid("source_proposal_id"),
+    ruleId: text("rule_id"),
     title: text("title").notNull(),
     detail: text("detail").notNull().default(""),
     payload: jsonb("payload").notNull(),
@@ -367,6 +370,8 @@ export const proposals = pgTable(
     foreignKey({ columns: [t.tenantId, t.requestId], foreignColumns: [requests.tenantId, requests.id], name: "proposals_request_fk" }),
     foreignKey({ columns: [t.tenantId, t.itemId], foreignColumns: [requestItems.tenantId, requestItems.id], name: "proposals_item_fk" }),
     foreignKey({ columns: [t.tenantId, t.decidedBy], foreignColumns: [users.tenantId, users.id], name: "proposals_decider_fk" }),
+    foreignKey({ columns: [t.tenantId, t.sourceProposalId], foreignColumns: [t.tenantId, t.id], name: "proposals_source_fk" }),
+    index("proposals_source").on(t.tenantId, t.sourceProposalId),
     check("proposals_confidence_range", sql`${t.confidence} >= 0 AND ${t.confidence} <= 1`),
     index("proposals_queue").on(t.tenantId, t.status, t.createdAt),
     index("proposals_file").on(t.tenantId, t.fileId),
@@ -391,5 +396,22 @@ export const extractedRows = pgTable(
   (t) => [
     foreignKey({ columns: [t.tenantId, t.proposalId], foreignColumns: [proposals.tenantId, proposals.id], name: "extracted_rows_proposal_fk" }),
     index("extracted_rows_proposal").on(t.tenantId, t.proposalId, t.position),
+  ],
+);
+
+/** Per-tenant switches and parameters for validation rules. Writable only by tax managers and tenant admins (trigger-enforced). */
+export const ruleSettings = pgTable(
+  "rule_settings",
+  {
+    tenantId: tenantId().references(() => tenants.id),
+    ruleId: text("rule_id").notNull(),
+    enabled: boolean("enabled").notNull().default(true),
+    params: jsonb("params").notNull().default(sql`'{}'::jsonb`),
+    updatedBy: uuid("updated_by").notNull(),
+    updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow(),
+  },
+  (t) => [
+    unique("rule_settings_pk").on(t.tenantId, t.ruleId),
+    foreignKey({ columns: [t.tenantId, t.updatedBy], foreignColumns: [users.tenantId, users.id], name: "rule_settings_user_fk" }),
   ],
 );

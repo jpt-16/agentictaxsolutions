@@ -6,7 +6,7 @@ from uuid import UUID
 import psycopg
 from psycopg.types.json import Jsonb
 
-from .contract import AgentResult, AgentSpec, FileBlob, FileMeta
+from .contract import AgentResult, AgentSpec, FileBlob, FileMeta, SourceProposal
 from .storage import BlobStorage, verify_sha256
 
 
@@ -35,6 +35,36 @@ class JobFiles:
         return FileBlob(meta=meta, data=data)
 
 
+class JobProposals:
+    """ProposalAccess implementation: the one ACCEPTED extraction the held job refers to."""
+
+    def __init__(self, conn: psycopg.Connection, job_id: UUID, worker_id: str) -> None:
+        self.conn, self.job_id, self.worker_id = conn, job_id, worker_id
+        self._data: dict | None | bool = False  # False = not loaded yet
+        self.external_llm_enabled = False
+
+    def _load(self) -> dict | None:
+        if self._data is False:
+            row = self.conn.execute("select agent_get_proposal(%s, %s) as d", (self.job_id, self.worker_id)).fetchone()
+            self._data = row["d"] if row else None
+            self.external_llm_enabled = bool(self._data and self._data["tenant"]["external_llm_enabled"])
+        return self._data  # type: ignore[return-value]
+
+    def external_allowed(self) -> bool:
+        self._load()
+        return self.external_llm_enabled
+
+    def open(self, proposal_id: UUID) -> SourceProposal | None:
+        d = self._load()
+        if d is None or UUID(str(d["proposal"]["id"])) != proposal_id:
+            return None
+        return SourceProposal(
+            id=proposal_id, schema_key=d["proposal"]["schema_key"], payload=d["proposal"]["payload"], rows=d["rows"],
+            rule_settings={s["rule_id"]: {"enabled": s["enabled"], "params": s["params"]} for s in d["settings"]},
+            external_llm_enabled=self.external_llm_enabled, request_reference=d["request"]["reference"], tax_year=d["request"]["tax_year"],
+        )
+
+
 def save_results(conn: psycopg.Connection, job_id: UUID, worker_id: str, spec: AgentSpec, result: AgentResult) -> list[UUID]:
     """Persists an agent's output atomically. Idempotent per (job, agent): safe to retry."""
     run = result.meta.model_dump(mode="json")
@@ -42,6 +72,7 @@ def save_results(conn: psycopg.Connection, job_id: UUID, worker_id: str, spec: A
         {
             "kind": p.kind, "schema_key": p.payload.get("schema"), "title": p.title, "detail": p.detail,
             "payload": p.model_dump(mode="json")["payload"], "confidence": p.confidence, "severity": p.severity,
+            "rule_id": p.rule_id, "source_proposal_id": str(p.source_proposal_id) if p.source_proposal_id else None,
         }
         for p in result.proposals
     ]

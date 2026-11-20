@@ -48,3 +48,26 @@ export type ConfidenceBand = "high" | "medium" | "low";
 export function confidenceBand(c: number): ConfidenceBand {
   return c >= 0.9 ? "high" : c >= 0.75 ? "medium" : "low";
 }
+
+export type ProposalKind = "extraction" | "finding";
+/** Findings are "confirmed" or "dismissed"; extractions are "accepted" or "rejected". Same underlying statuses. */
+export function proposalStatusLabel(kind: ProposalKind, status: ProposalStatus): string {
+  if (kind === "finding") return { pending: "Open", accepted: "Confirmed", rejected: "Dismissed", superseded: "Superseded" }[status];
+  return PROPOSAL_STATUS_LABELS[status];
+}
+
+export const findingPayloadSchema = z.object({
+  schema: z.string(),
+  sheet: z.string(),
+  rule_id: z.string(),
+  rule_name: z.string(),
+  summary: z.string(),
+  explanation: z.string(),
+  explanation_source: z.enum(["template", "llm"]),
+  suggestion: z.string(),
+  evidence: z.array(z.object({ row: z.number().int(), sheet: z.string(), cells: z.array(z.string()), note: z.string() })),
+  metrics: z.record(z.string(), z.unknown()),
+  dedupe: z.string(),
+  source_proposal_id: z.string(),
+});
+export type FindingPayload = z.infer<typeof findingPayloadSchema>;

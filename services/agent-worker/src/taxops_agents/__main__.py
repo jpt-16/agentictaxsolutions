@@ -8,6 +8,7 @@ import signal
 import threading
 
 from .agents.extraction import ExtractionAgent
+from .agents.validation import ValidationAgent
 from .llm import build_gateway
 from .registry import AgentRegistry
 from .storage import LocalBlobStorage, find_repo_root, resolve_storage_dir
@@ -28,7 +29,8 @@ def _load_repo_env() -> None:
 
 
 registry = AgentRegistry()
-registry.register(ExtractionAgent)  # Phase 4 adds the validation agent here
+registry.register(ExtractionAgent)
+registry.register(ValidationAgent)
 
 
 def main() -> None:

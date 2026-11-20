@@ -1,10 +1,10 @@
 "use client";
 import Link from "next/link";
 import { usePathname } from "next/navigation";
-import { LayoutDashboard, FileText, History, Building2, Bot, type LucideIcon } from "lucide-react";
+import { LayoutDashboard, FileText, History, Building2, Bot, Settings, type LucideIcon } from "lucide-react";
 import { cn } from "./ui";
 
-const ICONS: Record<string, LucideIcon> = { dashboard: LayoutDashboard, requests: FileText, review: Bot, audit: History, directory: Building2 };
+const ICONS: Record<string, LucideIcon> = { dashboard: LayoutDashboard, requests: FileText, review: Bot, audit: History, directory: Building2, settings: Settings };
 export interface NavItem { href: string; label: string; icon: keyof typeof ICONS; badge?: number }
 
 export function SidebarNav({ items }: { items: NavItem[] }) {

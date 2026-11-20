@@ -1,12 +1,13 @@
 import Link from "next/link";
 import { notFound } from "next/navigation";
 import { AlertTriangle, Bot, Download, Eye, Info, ShieldAlert } from "lucide-react";
-import { can, PROPOSAL_STATUS_LABELS } from "@taxops/core";
+import { can, proposalStatusLabel } from "@taxops/core";
 import { getProposal, NotFoundError } from "@taxops/services";
 import { requireContext } from "@/lib/auth";
 import { decimalDiff, formatAmount } from "@/lib/decimal";
-import { Badge, Card, CardHeader, ConfidencePill, PageHeader, cn, formatDateTime } from "@/components/ui";
-import { DecisionForm } from "./decision";
+import { Badge, Card, CardHeader, ConfidencePill, PageHeader, SeverityBadge, cn, formatDateTime } from "@/components/ui";
+import { DecisionForm, SendBack } from "./decision";
+import { FindingView } from "./finding-view";
 
 export const dynamic = "force-dynamic";
 export const metadata = { title: "Review AI result" };
@@ -33,6 +34,7 @@ export default async function ProposalPage({ params, searchParams }: { params: P
   let p;
   try { p = await getProposal(ctx, id, { rowOffset: (page - 1) * ROWS, rowLimit: ROWS }); } catch (e) { if (e instanceof NotFoundError) notFound(); throw e; }
   const pl = p.payload;
+  const isFinding = p.kind === "finding";
   const diff = pl ? decimalDiff(pl.stats.sum_debit, pl.stats.sum_credit) : null;
   const pages = Math.max(1, Math.ceil(p.totalRows / ROWS));
   const sheetHref = (row: number) => `/requests/${p.request.id}/files/${p.file.id}?sheet=${encodeURIComponent(p.rows[0]?.sheet ?? "")}#r${row}`;
@@ -40,19 +42,19 @@ export default async function ProposalPage({ params, searchParams }: { params: P
   return (
     <>
       <PageHeader
-        crumbs={[{ href: "/review", label: "AI review" }, { label: p.title }]}
+        crumbs={[{ href: isFinding ? "/review?kind=finding" : "/review", label: "AI review" }, { label: p.title }]}
         title={p.title}
         subtitle={
           <span className="flex flex-wrap items-center gap-x-3 gap-y-1.5">
-            <Badge tone={p.status === "accepted" ? "green" : p.status === "rejected" ? "red" : p.status === "pending" ? "violet" : "slate"} dot>{PROPOSAL_STATUS_LABELS[p.status]}</Badge>
-            <ConfidencePill value={p.confidence} />
+            <Badge tone={p.status === "accepted" ? "green" : p.status === "rejected" ? "red" : p.status === "pending" ? "violet" : "slate"} dot>{proposalStatusLabel(p.kind, p.status)}</Badge>
+            {isFinding ? <SeverityBadge severity={p.severity} /> : <ConfidencePill value={p.confidence} />}
             {pl && <Badge tone={pl.method === "llm" ? "indigo" : "slate"}>{pl.method === "llm" ? "AI-assisted mapping" : "Header match"}</Badge>}
-            <span className="inline-flex items-center gap-1.5"><Bot size={14} aria-hidden /> AI-generated · check against the source file</span>
+            <span className="inline-flex items-center gap-1.5"><Bot size={14} aria-hidden /> {isFinding ? "Validation finding · confirm or dismiss" : "AI-generated · check against the source file"}</span>
           </span>
         }
       />
 
-      {!pl && (
+      {!pl && !isFinding && (
         <p role="alert" className="mb-4 flex items-start gap-2 rounded-lg px-3.5 py-2.5 text-[13px]" style={{ background: "var(--red-bg)", color: "var(--red-fg)" }}>
           <ShieldAlert size={16} className="mt-0.5 flex-none" aria-hidden /> This result does not match the expected format and cannot be shown in detail. Reject it and ask for the file to be re-processed.
         </p>
@@ -60,6 +62,7 @@ export default async function ProposalPage({ params, searchParams }: { params: P
 
       <div className="grid gap-5 lg:grid-cols-[1fr_340px]">
         <div className="space-y-5">
+          {isFinding && <FindingView p={p} />}
           {pl && (
             <Card>
               <CardHeader title="What the agent read" subtitle={`Sheet “${pl.sheet}” · header on row ${pl.header_row}`} />
@@ -94,7 +97,7 @@ export default async function ProposalPage({ params, searchParams }: { params: P
             </Card>
           )}
 
-          <Card>
+          {!isFinding && (<Card>
             <CardHeader title="Standardized rows" subtitle={`${p.totalRows} rows · each links to its source row in the file`} />
             <div className="overflow-x-auto">
               <table className="tbl !text-[13px]">
@@ -122,17 +125,30 @@ export default async function ProposalPage({ params, searchParams }: { params: P
                 </div>
               </div>
             )}
-          </Card>
+          </Card>)}
+          {!isFinding && p.findings.length > 0 && (
+            <Card>
+              <CardHeader title="Validation" subtitle="Findings raised against this accepted data" />
+              <ul className="divide-y divide-line">
+                {p.findings.map((f) => (
+                  <li key={f.id}><Link href={`/review/${f.id}`} className="flex items-center justify-between gap-3 px-5 py-3 hover:bg-surface2">
+                    <span className="text-ink">{f.title}</span><span className="flex items-center gap-1.5"><SeverityBadge severity={f.severity} /><Badge tone="slate">{proposalStatusLabel("finding", f.status)}</Badge></span>
+                  </Link></li>
+                ))}
+              </ul>
+            </Card>
+          )}
         </div>
 
         <aside className="space-y-5">
           <Card>
-            <CardHeader title={p.status === "pending" ? "Review" : "Decision"} />
-            {p.can.decide ? <DecisionForm proposalId={p.id} /> : (
+            <CardHeader title={p.status === "pending" ? (isFinding ? "Your call" : "Review") : "Decision"} />
+            {p.can.sendBack && <SendBack findingId={p.id} />}
+            {p.can.decide ? <DecisionForm proposalId={p.id} kind={p.kind} /> : (
               <div className="px-5 py-4 text-[13.5px]">
                 {p.status === "pending" ? <p className="text-muted">You can view this result but not decide on it.</p> : (
                   <>
-                    <p className="text-ink"><strong>{PROPOSAL_STATUS_LABELS[p.status]}</strong>{p.decidedByName ? <> by {p.decidedByName}</> : null}</p>
+                    <p className="text-ink"><strong>{proposalStatusLabel(p.kind, p.status)}</strong>{p.decidedByName ? <> by {p.decidedByName}</> : null}</p>
                     {p.decidedAt && <p className="text-[12.5px] text-muted">{formatDateTime(p.decidedAt)}</p>}
                     {p.decisionNote && <p className="mt-2 whitespace-pre-wrap text-body">“{p.decisionNote}”</p>}
                   </>
@@ -156,7 +172,7 @@ export default async function ProposalPage({ params, searchParams }: { params: P
             </dl>
           </Card>
 
-          {p.run && (
+          {p.run && !isFinding && (
             <Card>
               <CardHeader title="How it was produced" />
               <dl className="grid grid-cols-2 gap-x-3 gap-y-2.5 px-5 py-4 text-[13px]">

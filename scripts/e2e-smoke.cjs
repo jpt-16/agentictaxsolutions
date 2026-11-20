@@ -123,6 +123,7 @@ const BASE = process.env.BASE_URL ?? "http://localhost:3000";
   execSync(WORKER, { cwd: path.join(__dirname, "../services/agent-worker"), stdio: "pipe", env: process.env });
   await login("Sam Whitfield");
   assert.equal((await page.goto(`${BASE}/review`)).status(), 404);
+  assert.equal((await page.goto(`${BASE}/settings`)).status(), 404);
   await page.goto(requestUrl);
   assert.doesNotMatch(await item(ITEM2).innerText(), /AI result|AI queued/);
   step("worker processed the upload; contributors see no AI information and /review is 404");
@@ -145,6 +146,23 @@ const BASE = process.env.BASE_URL ?? "http://localhost:3000";
   await page.goto(requestUrl);
   await item(ITEM2).getByText("AI result accepted").waitFor();
   step("reviewer accepted the AI result; the request page reflects it");
+  await logout();
+
+  // Accepting triggered validation. The worker raises a finding the reviewer can confirm and send back.
+  execSync(WORKER, { cwd: path.join(__dirname, "../services/agent-worker"), stdio: "pipe", env: process.env });
+  await login("Naomi Clarke");
+  await page.goto(`${BASE}/review?kind=finding`);
+  await page.getByRole("link", { name: "Debits and credits differ by 50" }).first().click();
+  await page.waitForSelector("text=Deterministic rule");
+  assert.match(await page.locator("body").innerText(), /Suggested next step/);
+  await page.getByRole("button", { name: "Confirm this is an issue" }).click();
+  await page.waitForSelector("text=Confirmed");
+  await page.getByRole("button", { name: "Send back to contributor" }).click();
+  await page.waitForSelector("text=Send back to contributor", { state: "detached" });
+  await page.goto(requestUrl);
+  await item(ITEM2).getByText("Changes requested", { exact: true }).first().waitFor();
+  await item(ITEM2).getByText(/Validation finding: Debits and credits differ by 50/).waitFor();
+  step("validation raised a finding; reviewer confirmed it and sent the item back with the finding as the reason");
   await logout();
 
 
@@ -175,7 +193,10 @@ const BASE = process.env.BASE_URL ?? "http://localhost:3000";
   await item(ITEM1).locator("textarea").fill("Split by quarter in tab 2.");
   await btn(ITEM1, "Resubmit").click();
   await item(ITEM1).getByText("Split by quarter in tab 2.").waitFor();
-  step("contributor resubmitted item 1 (v2)");
+  await item(ITEM2).locator("textarea").fill("Corrected the disposal entity trial balance; now balanced.");
+  await btn(ITEM2, "Resubmit").click();
+  await item(ITEM2).getByText("Corrected the disposal entity trial balance").waitFor();
+  step("contributor resubmitted item 1 (v2) and the item sent back by validation");
   await logout();
 
   await login("Naomi Clarke");
@@ -195,14 +216,25 @@ const BASE = process.env.BASE_URL ?? "http://localhost:3000";
   await page.click('button:has-text("Sign off & close")');
   await page.waitForSelector('span.badge:has-text("Closed")');
   step("manager signed off and closed the request");
+  assert.equal((await page.goto(`${BASE}/settings`)).status(), 200);
+  await page.getByLabel("Enable One side per account").uncheck();
+  await page.locator("li", { hasText: "One side per account" }).getByRole("button", { name: "Save" }).click();
+  await page.waitForSelector("text=Saved. Applies the next time validation runs.");
+  step("manager switched a validation rule off from Settings");
   await logout();
 
   // 5. Auditor sees everything, chain verifies
   await login("Grace Okafor");
   await page.goto(`${BASE}/audit?verify=1`);
   await page.waitForSelector("text=Chain intact");
-  const audit = await page.locator("body").innerText();
-  for (const a of ["request.created", "request.published", "item.submitted", "item.changes_requested", "item.approved", "request.closed", "file.rejected", "file.viewed", "file.downloaded", "proposal.created", "proposal.accepted"]) {
+  let audit = await page.locator("body").innerText();
+  for (let n = 2; n <= 8; n++) { // the log is paginated (30 per page); read it all
+    await page.goto(`${BASE}/audit?page=${n}`);
+    const more = await page.locator("body").innerText();
+    if (!/\bseq\b|Audit history/.test(more) || more.includes("No events found")) break;
+    audit += "\n" + more;
+  }
+  for (const a of ["request.created", "request.published", "item.submitted", "item.changes_requested", "item.approved", "request.closed", "file.rejected", "file.viewed", "file.downloaded", "proposal.created", "proposal.accepted", "rule.updated"]) {
     assert.ok(audit.includes(a), `audit log should include ${a}`);
   }
   step("auditor sees the full trail and the hash chain verifies");

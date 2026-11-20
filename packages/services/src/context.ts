@@ -37,7 +37,7 @@ export const todayOf = (c: ServiceContext) => todayIso(c.now?.() ?? new Date());
 
 /** Every service call runs inside a tenant-scoped transaction. */
 export const scoped = <T>(c: ServiceContext, fn: (tx: Tx) => Promise<T>) =>
-  withTenant(c.db, { tenantId: c.session.tenantId }, fn);
+  withTenant(c.db, { tenantId: c.session.tenantId, userId: c.session.userId }, fn);
 
 export class NotFoundError extends Error {
   constructor(what = "Resource") {

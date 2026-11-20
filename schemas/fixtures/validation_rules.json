@@ -1,0 +1,64 @@
+[
+  {
+    "id": "tb_footing",
+    "name": "Debits equal credits",
+    "description": "Total debits must equal total credits (within a tolerance).",
+    "severity": "error",
+    "params": {
+      "tolerance": "0"
+    }
+  },
+  {
+    "id": "tb_duplicate_accounts",
+    "name": "No duplicate accounts",
+    "description": "An account code should appear once in a trial balance.",
+    "severity": "warning",
+    "params": {}
+  },
+  {
+    "id": "tb_missing_identifiers",
+    "name": "Accounts are identified",
+    "description": "Every row needs both an account code and an account name.",
+    "severity": "warning",
+    "params": {}
+  },
+  {
+    "id": "tb_both_sides",
+    "name": "One side per account",
+    "description": "An account line should not carry both a debit and a credit.",
+    "severity": "warning",
+    "params": {}
+  },
+  {
+    "id": "tb_negative_amounts",
+    "name": "No negative debit/credit amounts",
+    "description": "Debit and credit columns should hold positive amounts.",
+    "severity": "warning",
+    "params": {}
+  },
+  {
+    "id": "tb_unusual_side",
+    "name": "Balances sit on their usual side",
+    "description": "Flags accounts whose balance is on the opposite side to what their account number range suggests (assumes standard 1xxx-8xxx numbering).",
+    "severity": "warning",
+    "params": {
+      "min_amount": "0"
+    }
+  },
+  {
+    "id": "tb_extraction_gaps",
+    "name": "Extraction is complete",
+    "description": "Flags unreadable amounts and a sheet total row that disagrees with the rows read.",
+    "severity": "warning",
+    "params": {}
+  },
+  {
+    "id": "tb_sparse",
+    "name": "Plausible size",
+    "description": "Flags very small or all-zero trial balances.",
+    "severity": "info",
+    "params": {
+      "min_rows": "5"
+    }
+  }
+]

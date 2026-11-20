@@ -181,3 +181,91 @@ def test_an_agent_failure_on_a_corrupt_workbook_is_recorded_once_and_not_retried
     assert env.q("select status from jobs where id = %s", job)[0]["status"] == "succeeded"
     run = env.q("select status, detail from agent_runs where file_id = %s", fid)[0]
     assert run["status"] == "failed" and "not a valid" in run["detail"]
+
+
+# ---------------------------------------------------------------------------------------- validation, end to end
+APP_URL = "postgres://taxops_app:taxops_app@localhost:5433/taxops_test"
+UNBALANCED = [["Account", "Description", "Debit", "Credit"], ["1000", "Cash", 100, 0], ["2000", "Payables", 0, 60], ["3000", "Capital", 0, 40],
+              ["4000", "Revenue", 0, 45], ["5000", "Costs", 70, 0]]  # debits 170, credits 145: difference 25
+
+
+def vworker(env: Env, event: str, gateway=None) -> Worker:
+    from taxops_agents.agents.validation import ValidationAgent
+
+    reg = AgentRegistry()
+    reg.register(type("TestValidation", (ValidationAgent,), {"spec": ValidationAgent.spec.model_copy(update={"triggers": (event,)})}))
+    return Worker(WORKER_URL, reg, gateway or FakeGateway(), storage=env.storage, retry_seconds=0)
+
+
+def extract(env: Env, data: bytes) -> tuple[str, str]:
+    """Runs the real extraction through the worker; returns (file id, proposal id)."""
+    ev = f"file.uploaded.{uuid4().hex[:6]}"
+    fid = env.add_file(data)
+    env.enqueue(fid, ev)
+    worker(env, event=ev).run_once()
+    return fid, str(env.q("select id from proposals where file_id = %s", fid)[0]["id"])
+
+
+def accept(env: Env, proposal_id: str) -> None:
+    """A person accepts the proposal, through the restricted application role (the only role that may decide)."""
+    with psycopg.connect(APP_URL) as c:
+        c.execute("select set_config('app.tenant_id', %s, true)", (str(env.tenant),))
+        c.execute("select set_config('app.user_id', %s, true)", (str(env.user),))
+        c.execute("update proposals set status = 'accepted', decided_by = %s, decided_at = now() where id = %s", (env.user, proposal_id))
+        c.commit()
+
+
+def enqueue_validation(env: Env, fid: str, pid: str, event: str) -> str:
+    payload = {"proposalId": pid, "fileId": fid, "requestId": str(env.request), "itemId": str(env.item), "schema": "trial_balance"}
+    with psycopg.connect(OWNER_URL) as c:
+        c.execute("select set_config('app.tenant_id', %s, true)", (str(env.tenant),))
+        row = c.execute("insert into jobs (tenant_id, type, payload, max_attempts) values (%s, %s, %s::jsonb, 2) returning id", (env.tenant, event, json.dumps(payload))).fetchone()
+        c.commit()
+        return str(row[0])
+
+
+def test_accepted_extraction_is_validated_and_findings_are_persisted_for_review():
+    env = Env()
+    fid, pid = extract(env, make_xlsx({"S": UNBALANCED}))
+    accept(env, pid)
+    ev = f"proposal.accepted.{uuid4().hex[:6]}"
+    job = enqueue_validation(env, fid, pid, ev)
+    assert vworker(env, ev).run_once() == 1
+    assert env.q("select status from jobs where id = %s", job)[0]["status"] == "succeeded"
+
+    findings = env.q("select * from proposals where kind = 'finding' and source_proposal_id = %s", pid)
+    foot = next(f for f in findings if f["rule_id"] == "tb_footing")
+    assert foot["status"] == "pending" and foot["severity"] == "error" and float(foot["confidence"]) == 1.0
+    assert foot["payload"]["metrics"]["difference"] == "25" and foot["file_id"] == uuid_of(fid) and foot["request_id"] == env.request
+    run = env.q("select status, agent_name, detail from agent_runs where file_id = %s and agent_name = 'validation'", fid)[0]
+    assert run["status"] == "succeeded" and "error" in run["detail"]
+    audit = env.q("select action, actor_type from audit_events where entity_id = %s", foot["id"])
+    assert audit == [{"action": "proposal.created", "actor_type": "agent"}]
+
+
+def uuid_of(s: str):
+    from uuid import UUID
+
+    return UUID(s)
+
+
+def test_validation_only_runs_against_accepted_extractions():
+    env = Env()
+    fid, pid = extract(env, make_xlsx({"S": UNBALANCED}))  # still PENDING review
+    ev = f"proposal.accepted.{uuid4().hex[:6]}"
+    enqueue_validation(env, fid, pid, ev)
+    vworker(env, ev).run_once()
+    assert env.q("select 1 from proposals where kind = 'finding'") == []
+    run = env.q("select status, detail from agent_runs where agent_name = 'validation' and file_id = %s", fid)[0]
+    assert run["status"] == "skipped" and "No accepted extraction" in run["detail"]
+
+
+def test_a_balanced_trial_balance_validates_clean():
+    env = Env()
+    fid, pid = extract(env, make_xlsx({"S": [UNBALANCED[0], ["1000", "Cash", 100, 0], ["2000", "Payables", 0, 60], ["3000", "Capital", 0, 40], ["4000", "Revenue", 0, 45], ["5000", "Costs", 45, 0]]}))
+    accept(env, pid)
+    ev = f"proposal.accepted.{uuid4().hex[:6]}"
+    enqueue_validation(env, fid, pid, ev)
+    vworker(env, ev).run_once()
+    assert [f["rule_id"] for f in env.q("select rule_id from proposals where kind = 'finding'")] == []
+    assert "no findings" in env.q("select detail from agent_runs where agent_name = 'validation' and file_id = %s", fid)[0]["detail"]

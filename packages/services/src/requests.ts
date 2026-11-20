@@ -10,7 +10,7 @@ import {
   submissions, users, type Tx,
 } from "@taxops/db";
 import type { StoredFile } from "./files/types";
-import { extractionByFile } from "./proposals";
+import { extractionByFile, findingsForRequest } from "./proposals";
 import { isPreviewable } from "./files/validate";
 import { actorOf, auditActorOf, NotFoundError, scoped, todayOf, type ServiceContext } from "./context";
 
@@ -158,6 +158,7 @@ export async function getRequestDetail(ctx: ServiceContext, requestId: string) {
         .innerJoin(requestItems, and(eq(requestItems.tenantId, submissions.tenantId), eq(requestItems.id, submissions.itemId)))
         .where(eq(requestItems.requestId, requestId)).orderBy(asc(filesTable.originalName));
     const extraction = await extractionByFile(tx, ctx, fileRows.map((f) => f.id));
+    const validation = await findingsForRequest(tx, ctx, requestId);
     const reviewRows = await tx.select({
         submissionId: reviews.submissionId, decision: reviews.decision, rationale: reviews.rationale,
         reviewerName: users.name, createdAt: reviews.createdAt,
@@ -210,6 +211,7 @@ export async function getRequestDetail(ctx: ServiceContext, requestId: string) {
       createdAt: req.createdAt, publishedAt: req.publishedAt, closedAt: req.closedAt,
       createdByName: creator[0]?.name ?? "Unknown",
       assignees: assigneeMap.get(requestId) ?? [],
+      validation,
       items: itemDtos,
       comments: commentRows,
       activity,

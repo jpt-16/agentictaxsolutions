@@ -24,7 +24,7 @@ from .contract import Agent, AgentResult, AgentSpec, RunContext
 from .llm import LLMGateway, NullGateway
 from .registry import AgentRegistry
 from .storage import BlobStorage
-from .store import JobFiles, save_results
+from .store import JobFiles, JobProposals, save_results
 
 log = logging.getLogger("taxops.worker")
 
@@ -108,10 +108,13 @@ class Worker:
     def _run_agent(self, conn: psycopg.Connection, agent_cls: type[Agent], job: Job, files: JobFiles | None) -> None:
         payload = agent_cls.input_model.model_validate(job.payload)
         meta = files.meta() if files else None
+        proposals = JobProposals(conn, job.id, self.worker_id) if "proposalId" in job.payload else None
         # Content only reaches an external model if the TENANT has opted in; otherwise the agent gets a gateway that refuses.
-        allow = bool(meta and meta.external_llm_enabled)
-        llm = self.gateway if allow or files is None else NullGateway("This tenant has not allowed external LLM processing.")
-        ctx = RunContext(tenant_id=job.tenant_id, run_id=uuid4(), triggered_by_event=job.type, llm=llm, files=files, allow_external_llm=allow or files is None)
+        allow = bool(meta and meta.external_llm_enabled) or bool(proposals and proposals.external_allowed())
+        gated = files is not None or proposals is not None
+        llm = self.gateway if allow or not gated else NullGateway("This tenant has not allowed external LLM processing.")
+        ctx = RunContext(tenant_id=job.tenant_id, run_id=uuid4(), triggered_by_event=job.type, llm=llm, files=files, proposals=proposals,
+                         allow_external_llm=allow or not gated)
         output = agent_cls().run(ctx, payload)
         if isinstance(output, AgentResult) and files is not None:
             save_results(conn, job.id, self.worker_id, agent_cls.spec, output)  # atomic + idempotent per (job, agent)

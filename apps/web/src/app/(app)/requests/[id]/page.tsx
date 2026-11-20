@@ -1,11 +1,11 @@
 import { notFound } from "next/navigation";
 import Link from "next/link";
-import { Bot, CalendarClock, Download, FileSpreadsheet, FileText, Info, Lock, MessageSquare, User2 } from "lucide-react";
+import { Bot, CalendarClock, ShieldAlert, Download, FileSpreadsheet, FileText, Info, Lock, MessageSquare, User2 } from "lucide-react";
 import { DATA_TYPE_LABELS, ROLE_LABELS } from "@taxops/core";
 import { getRequestDetail, NotFoundError } from "@taxops/services";
 import { requireContext } from "@/lib/auth";
 import {
-  Avatar, Badge, Card, CardHeader, Chip, EmptyState, ItemStatusBadge, PageHeader, PriorityBadge, ProgressBar,
+  Avatar, Badge, Card, CardHeader, Chip, EmptyState, ItemStatusBadge, PageHeader, PriorityBadge, ProgressBar, SeverityBadge,
   RequestStatusBadge, cn, dueLabel, formatDate, formatDateTime,
 } from "@/components/ui";
 import { CommentForm, RequestActions, ReviewForm, SubmitForm } from "./interactive";
@@ -186,6 +186,19 @@ export default async function RequestPage({ params, searchParams }: {
               <ProgressBar value={approved} max={r.items.length} label="Items approved" />
             </div>
           </Card>
+
+          {r.validation && (r.validation.items.length > 0 || r.validation.dismissed > 0) && (
+            <Card>
+              <CardHeader title="Validation" subtitle={`${r.validation.open} open · ${r.validation.confirmed} confirmed · ${r.validation.dismissed} dismissed`} />
+              <ul className="divide-y divide-line">
+                {r.validation.items.slice(0, 6).map((f) => (
+                  <li key={f.id}><Link href={`/review/${f.id}`} className="flex items-start justify-between gap-2 px-5 py-2.5 text-[13px] hover:bg-surface2">
+                    <span className="flex items-start gap-1.5 text-ink"><ShieldAlert size={14} className="mt-0.5 flex-none text-muted" aria-hidden />{f.title}</span><SeverityBadge severity={f.severity} />
+                  </Link></li>
+                ))}
+              </ul>
+            </Card>
+          )}
 
           <Card>
             <CardHeader title="Assigned to" />

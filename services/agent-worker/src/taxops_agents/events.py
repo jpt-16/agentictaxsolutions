@@ -8,7 +8,7 @@ from __future__ import annotations
 from typing import Literal
 from uuid import UUID
 
-from pydantic import BaseModel, ConfigDict
+from pydantic import BaseModel, ConfigDict, Field
 
 
 class FileUploaded(BaseModel):
@@ -20,4 +20,15 @@ class FileUploaded(BaseModel):
     kind: Literal["xlsx", "csv", "pdf", "docx", "txt", "png", "jpg"]
 
 
-EVENT_MODELS: dict[str, type[BaseModel]] = {"file.uploaded": FileUploaded}
+class ProposalAccepted(BaseModel):
+    """Enqueued when a person accepts an extraction; triggers validation of the accepted data."""
+
+    model_config = ConfigDict(extra="forbid")
+    proposalId: UUID
+    fileId: UUID
+    requestId: UUID
+    itemId: UUID
+    schema_: Literal["trial_balance"] = Field(alias="schema")
+
+
+EVENT_MODELS: dict[str, type[BaseModel]] = {"file.uploaded": FileUploaded, "proposal.accepted": ProposalAccepted}

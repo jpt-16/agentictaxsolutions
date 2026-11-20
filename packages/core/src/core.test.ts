@@ -4,7 +4,7 @@ import { resolve } from "node:path";
 import {
   assertCan, assertCanClose, assertCanPublish, assertItemTransition, canViewRequest, can, daysUntil,
   deriveRequestStatus, isOverdue, violatesSegregationOfDuties, createRequestSchema, reviewItemSchema,
-  ForbiddenError, InvalidTransitionError, type Actor, extractionPayloadSchema, decideProposalSchema, confidenceBand,
+  ForbiddenError, InvalidTransitionError, type Actor, extractionPayloadSchema, decideProposalSchema, confidenceBand, VALIDATION_RULES, parseRuleParams, findingPayloadSchema, proposalStatusLabel,
 } from "./index";
 
 const actor = (over: Partial<Actor> = {}): Actor => ({
@@ -137,5 +137,38 @@ describe("AI proposals", () => {
     expect(decideProposalSchema.safeParse({ decision: "rejected", note: "Wrong mapping" }).success).toBe(true);
     expect(decideProposalSchema.safeParse({ decision: "accepted" }).success).toBe(true);
     expect([0.95, 0.8, 0.5].map(confidenceBand)).toEqual(["high", "medium", "low"]);
+  });
+});
+
+describe("validation rules catalog", () => {
+  it("is the Python agent's catalog, with unique ids and sane defaults", () => {
+    expect(VALIDATION_RULES.length).toBeGreaterThanOrEqual(8);
+    expect(new Set(VALIDATION_RULES.map((r) => r.id)).size).toBe(VALIDATION_RULES.length);
+    expect(VALIDATION_RULES.find((r) => r.id === "tb_footing")).toMatchObject({ severity: "error", params: { tolerance: "0" } });
+  });
+  it("validates rule parameters strictly", () => {
+    expect(parseRuleParams("tb_footing", { tolerance: "1.50" })).toEqual({ tolerance: "1.50" });
+    expect(() => parseRuleParams("tb_footing", { tolerance: "-1" })).toThrow();
+    expect(() => parseRuleParams("tb_footing", { tolerance: "1e9" })).toThrow();
+    expect(() => parseRuleParams("tb_footing", { evil: "x" })).toThrow();
+    expect(() => parseRuleParams("tb_sparse", { min_rows: "2.5" })).toThrow();
+    expect(parseRuleParams("tb_sparse", { min_rows: "8" })).toEqual({ min_rows: "8" });
+    expect(parseRuleParams("tb_duplicate_accounts", {})).toEqual({});
+    expect(() => parseRuleParams("nope", {})).toThrow(/Unknown rule/);
+  });
+  it("labels findings as confirmed/dismissed and extractions as accepted/rejected", () => {
+    expect(proposalStatusLabel("finding", "accepted")).toBe("Confirmed");
+    expect(proposalStatusLabel("finding", "rejected")).toBe("Dismissed");
+    expect(proposalStatusLabel("extraction", "accepted")).toBe("Accepted");
+  });
+  it("only managers and admins manage rules", () => {
+    expect(can("tax_manager", "rules.manage")).toBe(true); expect(can("tenant_admin", "rules.manage")).toBe(true);
+    for (const r of ["tax_reviewer", "contributor", "auditor"] as const) expect(can(r, "rules.manage")).toBe(false);
+    expect(can("tenant_admin", "tenant.admin")).toBe(true); expect(can("tax_manager", "tenant.admin")).toBe(false);
+  });
+  it("parses a finding payload", () => {
+    const p = { schema: "trial_balance", sheet: "S", rule_id: "tb_footing", rule_name: "x", summary: "s", explanation: "e", explanation_source: "template", suggestion: "g", evidence: [{ row: 2, sheet: "S", cells: ["C2"], note: "n" }], metrics: { difference: "25" }, dedupe: "S", source_proposal_id: "x" };
+    expect(findingPayloadSchema.parse(p).evidence[0]!.cells).toEqual(["C2"]);
+    expect(findingPayloadSchema.safeParse({ ...p, explanation_source: "magic" }).success).toBe(false);
   });
 });

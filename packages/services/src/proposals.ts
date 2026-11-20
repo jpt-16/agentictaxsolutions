@@ -1,13 +1,16 @@
 import { and, asc, desc, eq, inArray, ne, sql, type SQL } from "drizzle-orm";
 import {
-  assertCan, can, decideProposalSchema, extractionPayloadSchema, InvalidTransitionError, type ExtractionPayload, type ProposalStatus,
+  assertCan, can, decideProposalSchema, extractionPayloadSchema, findingPayloadSchema, InvalidTransitionError,
+  type ExtractionPayload, type FindingPayload, type ProposalStatus,
 } from "@taxops/core";
 import {
-  agentRuns, extractedRows, files, proposals, recordAudit, requestItems, requests, submissions, users, type Tx,
+  agentRuns, extractedRows, files, jobs, proposals, recordAudit, requestItems, requests, submissions, users, type Tx,
 } from "@taxops/db";
 import { auditActorOf, NotFoundError, scoped, type ServiceContext } from "./context";
+import { reviewItem } from "./requests";
 
 export interface ProposalFilters {
+  kind?: "extraction" | "finding";
   status?: ProposalStatus | "all";
   requestId?: string;
   limit?: number;
@@ -21,10 +24,11 @@ export async function listProposals(ctx: ServiceContext, f: ProposalFilters = {}
     const status = f.status ?? "pending";
     const conds: (SQL | undefined)[] = [status === "all" ? ne(proposals.status, "superseded") : eq(proposals.status, status)];
     if (f.requestId) conds.push(eq(proposals.requestId, f.requestId));
+    if (f.kind) conds.push(eq(proposals.kind, f.kind));
     const where = and(...conds);
     const rows = await tx
       .select({
-        id: proposals.id, title: proposals.title, detail: proposals.detail, confidence: proposals.confidence, severity: proposals.severity,
+        id: proposals.id, kind: proposals.kind, ruleId: proposals.ruleId, title: proposals.title, detail: proposals.detail, confidence: proposals.confidence, severity: proposals.severity,
         status: proposals.status, createdAt: proposals.createdAt, decidedAt: proposals.decidedAt,
         requestId: requests.id, requestRef: requests.reference, requestTitle: requests.title, itemTitle: requestItems.title,
         fileName: files.originalName, rowCount: sql<number>`(select count(*)::int from extracted_rows er where er.proposal_id = ${proposals.id})`,
@@ -66,12 +70,18 @@ export async function getProposal(ctx: ServiceContext, proposalId: string, opts:
       values: extractedRows.values, cells: extractedRows.cells, issues: extractedRows.issues,
     }).from(extractedRows).where(eq(extractedRows.proposalId, p.id)).orderBy(asc(extractedRows.position)).limit(rowLimit).offset(rowOffset);
     const totalRows = (await tx.select({ n: sql<number>`count(*)::int` }).from(extractedRows).where(eq(extractedRows.proposalId, p.id)))[0]!.n;
-    const parsed = extractionPayloadSchema.safeParse(p.payload);
+    const parsed = p.kind === "extraction" ? extractionPayloadSchema.safeParse(p.payload) : null;
+    const parsedFinding = p.kind === "finding" ? findingPayloadSchema.safeParse(p.payload) : null;
+    const [source] = p.sourceProposalId ? await tx.select({ id: proposals.id, title: proposals.title }).from(proposals).where(eq(proposals.id, p.sourceProposalId)) : [];
+    const findings = p.kind === "extraction" ? await findingsForSource(tx, p.id) : [];
 
     return {
       id: p.id, title: p.title, detail: p.detail, kind: p.kind, status: p.status, severity: p.severity, confidence: Number(p.confidence),
       createdAt: p.createdAt, decidedAt: p.decidedAt, decidedByName: decider?.name ?? null, decisionNote: p.decisionNote,
-      payload: parsed.success ? (parsed.data as ExtractionPayload) : null, // null => payload did not match the contract
+      ruleId: p.ruleId,
+      payload: parsed?.success ? (parsed.data as ExtractionPayload) : null, // null => payload did not match the contract
+      finding: parsedFinding?.success ? (parsedFinding.data as FindingPayload) : null,
+      source: source ?? null, findings,
       request: { id: req!.id, reference: req!.reference, title: req!.title },
       item: { id: item!.id, title: item!.title },
       file: { id: file!.id, name: file!.name, size: file!.size, previewable: /\.(xlsx|csv)$/i.test(file!.name) },
@@ -79,9 +89,45 @@ export async function getProposal(ctx: ServiceContext, proposalId: string, opts:
       run: run ? { agent: run.agentName, version: run.agentVersion, model: run.model, promptVersion: run.promptVersion, llmCalls: run.llmCalls, durationMs: run.durationMs } : null,
       rows: rows as { position: number; sheet: string; sourceRow: number; values: Record<string, string>; cells: Record<string, string>; issues: string[] }[],
       totalRows, rowOffset, rowLimit,
-      can: { decide: can(ctx.session.role, "proposal.review") && p.status === "pending" },
+      can: {
+        decide: can(ctx.session.role, "proposal.review") && p.status === "pending",
+        sendBack: p.kind === "finding" && p.status === "accepted" && can(ctx.session.role, "item.review") && item?.status === "submitted",
+      },
     };
   });
+}
+
+export interface FindingSummary { id: string; title: string; severity: "info" | "warning" | "error" | null; status: ProposalStatus; ruleId: string | null }
+
+/** Findings raised against one accepted extraction (excluding superseded ones). */
+export async function findingsForSource(tx: Tx, sourceId: string): Promise<FindingSummary[]> {
+  const rows = await tx.select({ id: proposals.id, title: proposals.title, severity: proposals.severity, status: proposals.status, ruleId: proposals.ruleId })
+    .from(proposals).where(and(eq(proposals.sourceProposalId, sourceId), ne(proposals.status, "superseded"))).orderBy(asc(proposals.createdAt));
+  const rank = { error: 0, warning: 1, info: 2 } as const;
+  return rows.sort((a, b) => rank[a.severity ?? "info"] - rank[b.severity ?? "info"]);
+}
+
+/** Open (pending) and confirmed findings for a whole request, for the validation card on the request page. */
+export async function findingsForRequest(tx: Tx, ctx: ServiceContext, requestId: string) {
+  if (!can(ctx.session.role, "proposal.read")) return null;
+  const rows = await tx.select({ id: proposals.id, title: proposals.title, severity: proposals.severity, status: proposals.status, ruleId: proposals.ruleId })
+    .from(proposals).where(and(eq(proposals.requestId, requestId), eq(proposals.kind, "finding"), ne(proposals.status, "superseded"))).orderBy(asc(proposals.createdAt));
+  const count = (st: ProposalStatus) => rows.filter((r) => r.status === st).length;
+  return { open: count("pending"), confirmed: count("accepted"), dismissed: count("rejected"), openErrors: rows.filter((r) => r.status === "pending" && r.severity === "error").length, items: rows.filter((r) => r.status !== "rejected") };
+}
+
+/**
+ * After a person CONFIRMS a finding, send the item back to the contributor with the finding as the reason.
+ * Uses the normal review path, so permissions, segregation of duties, status rules and audit all apply unchanged.
+ */
+export async function requestChangesFromFinding(ctx: ServiceContext, findingId: string) {
+  assertCan(ctx.session.role, "proposal.review");
+  assertCan(ctx.session.role, "item.review");
+  const f = await getProposal(ctx, findingId, { rowLimit: 1 });
+  if (f.kind !== "finding" || f.status !== "accepted") throw new InvalidTransitionError("Only a confirmed finding can be sent back to the contributor.");
+  const summary = f.finding?.summary ?? f.detail;
+  const rationale = `Validation finding: ${f.title}. ${summary} ${f.finding?.suggestion ?? ""}`.trim().slice(0, 1900);
+  await reviewItem(ctx, f.item.id, { decision: "changes_requested", rationale });
 }
 
 /** A human accepts or rejects an AI proposal. The decision is final (also enforced by a database trigger). */
@@ -97,10 +143,19 @@ export async function decideProposal(ctx: ServiceContext, proposalId: string, ra
     }).where(and(eq(proposals.id, proposalId), eq(proposals.status, "pending"))).returning({ id: proposals.id });
     if (updated.length === 0) throw new InvalidTransitionError(`This result was already ${p.status}.`);
     const [req] = await tx.select({ reference: requests.reference }).from(requests).where(eq(requests.id, p.requestId));
+    if (p.kind === "extraction" && input.decision === "accepted") {
+      // Same transaction as the decision: validation runs only against data a person has accepted, and never gets lost.
+      await tx.insert(jobs).values({
+        tenantId: ctx.session.tenantId, type: "proposal.accepted",
+        payload: { proposalId: p.id, fileId: p.fileId, requestId: p.requestId, itemId: p.itemId, schema: p.schemaKey ?? "trial_balance" },
+      });
+    }
     await recordAudit(tx, {
       tenantId: ctx.session.tenantId, actor: auditActorOf(ctx), action: `proposal.${input.decision}`, entityType: "proposal", entityId: p.id,
       requestRef: p.requestId,
-      summary: `${input.decision === "accepted" ? "Accepted" : "Rejected"} AI result "${p.title}" on ${req?.reference ?? ""}`,
+      summary: p.kind === "finding"
+        ? `${input.decision === "accepted" ? "Confirmed" : "Dismissed"} finding "${p.title}" on ${req?.reference ?? ""}`
+        : `${input.decision === "accepted" ? "Accepted" : "Rejected"} AI result "${p.title}" on ${req?.reference ?? ""}`,
       before: { status: "pending", confidence: Number(p.confidence) },
       after: { status: input.decision, note: input.note || null },
     });

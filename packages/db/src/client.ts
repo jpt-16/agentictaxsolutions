@@ -21,6 +21,8 @@ export function connect(url: string, opts: { max?: number } = {}): Connection {
 
 export interface TenantScope {
   tenantId: string;
+  /** Acting user. Exposed to the database (`app.user_id`) so triggers can enforce who may change guarded tables. */
+  userId?: string;
   /** Enables the dev-login helper function for this transaction only. */
   allowDevLogin?: boolean;
 }
@@ -33,6 +35,7 @@ export interface TenantScope {
 export async function withTenant<T>(db: Db, scope: TenantScope, fn: (tx: Tx) => Promise<T>): Promise<T> {
   return db.transaction(async (tx) => {
     await tx.execute(sql`select set_config('app.tenant_id', ${scope.tenantId}, true)`);
+    if (scope.userId) await tx.execute(sql`select set_config('app.user_id', ${scope.userId}, true)`);
     if (scope.allowDevLogin) await tx.execute(sql`select set_config('app.allow_dev_login', 'on', true)`);
     return fn(tx);
   });

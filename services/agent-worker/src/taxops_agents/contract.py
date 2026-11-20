@@ -43,6 +43,9 @@ class Proposal(BaseModel):
     confidence: float = Field(ge=0.0, le=1.0)
     severity: Severity | None = None
     evidence: list[Evidence] = Field(default_factory=list)
+    # Findings only: the rule that raised it, and the ACCEPTED extraction it was raised against.
+    rule_id: str | None = None
+    source_proposal_id: UUID | None = None
 
 
 class FileMeta(BaseModel):
@@ -76,6 +79,25 @@ class FileAccess(Protocol):
     def open(self, file_id: UUID) -> FileBlob: ...
 
 
+class SourceProposal(BaseModel):
+    """An accepted extraction, as handed to a validation run (bound to the job being worked)."""
+
+    model_config = ConfigDict(frozen=True)
+    id: UUID
+    schema_key: str | None
+    payload: dict[str, Any]
+    rows: list[dict[str, Any]]
+    rule_settings: dict[str, dict[str, Any]]  # rule_id -> {"enabled": bool, "params": {...}}
+    external_llm_enabled: bool
+    request_reference: str
+    tax_year: int
+
+
+@runtime_checkable
+class ProposalAccess(Protocol):
+    def open(self, proposal_id: UUID) -> SourceProposal | None: ...
+
+
 class RunContext(BaseModel):
     """Everything an agent may know about the run. Always tenant-scoped."""
 
@@ -85,6 +107,7 @@ class RunContext(BaseModel):
     triggered_by_event: str
     llm: LLMGateway
     files: FileAccess | None = None
+    proposals: ProposalAccess | None = None
     # False when the tenant has not allowed content to be sent to an external model provider.
     allow_external_llm: bool = False
 

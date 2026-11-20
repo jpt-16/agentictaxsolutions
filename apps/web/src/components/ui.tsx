@@ -136,3 +136,8 @@ export function ConfidencePill({ value }: { value: number }) {
   const band = confidenceBand(value);
   return <Badge tone={band === "high" ? "green" : band === "medium" ? "amber" : "red"}>{Math.round(value * 100)}% confidence</Badge>;
 }
+
+export function SeverityBadge({ severity }: { severity: "info" | "warning" | "error" | null }) {
+  const tone = severity === "error" ? "red" : severity === "warning" ? "amber" : "slate";
+  return <Badge tone={tone} dot>{severity === "error" ? "Error" : severity === "warning" ? "Warning" : "Info"}</Badge>;
+}
