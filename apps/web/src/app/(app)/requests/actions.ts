@@ -1,7 +1,7 @@
 "use server";
 import { revalidatePath } from "next/cache";
 import {
-  addComment, closeRequest, createRequest, publishRequest, reviewItem, submitItem,
+  addComment, closeRequest, createRequest, publishRequest, reviewItem,
 } from "@taxops/services";
 import { requireContext } from "@/lib/auth";
 import { guard, type ActionResult } from "@/lib/actions";
@@ -39,13 +39,6 @@ export async function publishRequestAction(requestId: string): Promise<ActionRes
 export async function closeRequestAction(requestId: string): Promise<ActionResult> {
   const ctx = await requireContext();
   const r = await guard(() => closeRequest(ctx, requestId));
-  refresh(requestId);
-  return r;
-}
-
-export async function submitItemAction(requestId: string, itemId: string, note: string): Promise<ActionResult> {
-  const ctx = await requireContext();
-  const r = await guard(() => submitItem(ctx, itemId, { note }));
   refresh(requestId);
   return r;
 }

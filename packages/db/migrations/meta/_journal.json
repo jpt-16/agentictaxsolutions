@@ -15,6 +15,20 @@
       "when": 1795190551350,
       "tag": "0001_security_rls_audit",
       "breakpoints": true
+    },
+    {
+      "idx": 2,
+      "version": "7",
+      "when": 1795191754778,
+      "tag": "0002_open_talisman",
+      "breakpoints": true
+    },
+    {
+      "idx": 3,
+      "version": "7",
+      "when": 1795191755684,
+      "tag": "0003_files_jobs_security",
+      "breakpoints": true
     }
   ]
 }

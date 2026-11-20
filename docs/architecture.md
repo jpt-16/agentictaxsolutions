@@ -17,13 +17,14 @@
 | Database | PostgreSQL 16, Drizzle ORM, SQL migrations | RLS + composite tenant FKs |
 | AI runtime | **Python** worker (`services/agent-worker`) | Chosen for the ML/data ecosystem. Isolated behind a contract |
 | LLM | **Gemini** via a provider-agnostic gateway | Cost-driven choice. Swappable; redaction + schema-validated output live in the gateway |
-| Queue (planned, Phase 3) | Postgres `jobs` table, `FOR UPDATE SKIP LOCKED` | **Changed from the original proposal (pg-boss).** pg-boss is Node-only; a plain SQL queue is language-neutral so the Python worker can consume it with no extra infrastructure |
+| Queue | Postgres `jobs` table, `FOR UPDATE SKIP LOCKED` (built in Phase 2) | **Changed from the original proposal (pg-boss).** pg-boss is Node-only; a plain SQL queue is language-neutral so the Python worker can consume it with no extra infrastructure |
 | Auth | Dev persona picker (stub); OIDC/SAML SSO planned | Downstream code only needs the session cookie and `loadSession()` |
 
 ### How the TypeScript app and Python worker meet
 Both talk to the same Postgres. The web app enqueues a job inside the same transaction as the change that caused it
-(e.g. `submission.created`); the worker claims jobs, runs the registered agent for that event, and writes **proposals**
-back (tenant-scoped, with `agent_runs` for provenance). The app never calls the worker synchronously, so a slow or
+(`file.uploaded` is enqueued with the submission it belongs to); the worker claims jobs through three SECURITY DEFINER
+functions (`jobs_claim/complete/fail`), runs the registered agents for that event, and will write **proposals**
+back (tenant-scoped, with `agent_runs` for provenance) in Phase 3. The `taxops_worker` role has **no table privileges at all**. The app never calls the worker synchronously, so a slow or
 failing model never blocks a user request.
 
 ## Security model
@@ -45,6 +46,15 @@ failing model never blocks a user request.
 - Appended in the **same transaction** as the change (both commit or neither does).
 - `seq`, timestamp, `prev_hash`, `hash` are assigned by a DB trigger, so the app cannot forge or skip them; hashes chain over all fields.
 - `UPDATE/DELETE/TRUNCATE` are blocked by privileges *and* triggers. `verify_audit_chain()` detects edits, deletions and reordering, even by someone who disables the triggers (covered by a test).
+
+**Files (Phase 2)**
+- Pipeline order: authorize → validate → malware-scan → write blob → commit rows + audit + job in one transaction; blobs are deleted if the commit fails. A rejected file blocks the whole submission and is audited as `file.rejected`.
+- Validation is by *content*, never the client's claim: extension allow-list (xlsx, csv, pdf, docx, txt, png, jpg), magic bytes, OOXML structure, macro/executable parts refused, zip-bomb check from declared sizes **without inflating**, password-protected/legacy OLE refused, PDFs with scripts/launch/embedded files refused, UTF-8 text check, 25 MB per file / 10 files / 100 MB per submission. `.xls/.xlsm/.xlsb/.doc/.docm` are refused with guidance to re-save.
+- Scanner is an interface: ClamAV over clamd INSTREAM, **fail-closed** (scanner down = upload refused). Dev uses an EICAR-only stub; production refuses to run without `CLAMAV_HOST`.
+- Storage keys are `<tenant uuid>/<file uuid>` only (strict pattern, no overwrite), so user-supplied names can never reach a path. Display names are sanitized (paths, control and bidi characters).
+- Every download/view is **re-authorized per request** (same visibility rules as the request; hidden = 404) and recorded as `file.downloaded` / `file.viewed`. Stored SHA-256 is re-checked on read to detect blob tampering.
+- Downloads are `attachment` with `nosniff` and a `sandbox` CSP, `no-store`. The upload endpoint is same-origin-checked (CSRF) and size-capped.
+- The viewer is read-only: formulas show cached values and are never evaluated; capped at 200 rows x 30 columns.
 
 **Application**
 - Security headers (CSP `frame-ancestors`, HSTS, nosniff, etc.), `poweredByHeader` off, server actions have Next's built-in origin checks.
@@ -68,8 +78,8 @@ failing model never blocks a user request.
 |---|---|---|
 | 0 | Monorepo, design system, tenancy/RLS, audit primitive, fictional seed, agent contract | Done |
 | 1 | Dashboard, requests, assignments, deadlines, review workflow, audit UI | Done |
-| 2 | File upload (versioning, virus scan, signed URLs), Excel viewer, `jobs` table | Next |
-| 3 | Extraction agent (Python + Gemini), canonical schemas, proposal review UI | |
+| 2 | File upload (versioning, malware scan, authorized downloads), Excel viewer, `jobs` queue + worker loop | Done |
+| 3 | Extraction agent (Python + Gemini), canonical schemas, proposal review UI | Next |
 | 4 | Validation agent (deterministic rules + LLM explanations), finding triage, approval | |
 | 5 | Hardening: permission/isolation suites, audit export, observability, notifications, SSO | |
 
@@ -79,7 +89,12 @@ failing model never blocks a user request.
 - **Contributor scoping is enforced in the service layer**, not RLS (tenant isolation *is* RLS). Pushing per-user scope into RLS is a candidate hardening step.
 - **Audit writes serialize per tenant** (advisory lock) to guarantee a gap-free chain. Fine at MVP scale; shard or batch-seal later if write volume demands it. Integrity verification is O(n), so it runs on demand, not on every page load.
 - Dashboard aggregation is computed in application code over the visible set; move to SQL aggregates if tenants grow large.
-- No file upload, notifications, draft editing, or user management UI yet.
+- No notifications, draft editing, or user management UI yet.
 - The Gemini gateway is unit-tested with a stub client but **has not been run against the live API**. Confirm the model id (`GEMINI_MODEL`) and data-retention terms before sending anything but fictional data.
-- The `jobs` table and worker poll loop do not exist yet (Phase 2/3); the Python package currently contains the contract, registry and gateway only.
+- The queue and worker loop exist and are tested, but **no agents are registered yet**, so `file.uploaded` jobs simply wait in the queue until Phase 3.
 - `docker-compose.yml` and the CI workflow are written but were not executed in the authoring environment (no Docker daemon there).
+- **Dev scanner is a stub** (EICAR only). The ClamAV client is tested against a fake clamd, not a real one. Do not accept files from real users without a real scanner; production refuses to start uploads without `CLAMAV_HOST`.
+- **Dev storage is unencrypted local disk.** Production needs S3/GCS with KMS encryption; the `FileStorage` interface is the seam. Downloads stream through an authenticated route rather than presigned URLs, which keeps every access audited but means the app proxies the bytes.
+- Uploads are scanned and stored **synchronously** inside the request and buffered in memory (bounded by the limits above). Spreadsheet previews parse in-process. Move both to the worker with streaming if volumes or abuse require it.
+- Files are immutable by design (no delete/replace); a retention and legal-hold policy still needs to be defined.
+- Uploading is optional per submission (note-only is allowed); requiring a file per item type is a product decision for later.

@@ -18,6 +18,7 @@ export const priorityEnum = pgEnum("priority", PRIORITIES);
 export const dataTypeEnum = pgEnum("data_type", DATA_TYPES);
 export const assigneeTypeEnum = pgEnum("assignee_type", ["department", "entity", "user"]);
 export const reviewDecisionEnum = pgEnum("review_decision", ["approved", "changes_requested"]);
+export const jobStatusEnum = pgEnum("job_status", ["queued", "running", "succeeded", "dead"]);
 export const actorTypeEnum = pgEnum("actor_type", ["user", "agent", "system"]);
 
 const id = () => uuid("id").primaryKey().defaultRandom();
@@ -241,4 +242,58 @@ export const auditEvents = pgTable(
     index("audit_events_entity").on(t.tenantId, t.entityType, t.entityId),
     index("audit_events_request").on(t.tenantId, t.requestRef, t.seq),
   ],
+);
+
+/**
+ * An uploaded file, attached to a submission. Only files that passed validation AND malware scanning are
+ * ever stored, so every row here is clean by construction; `scanner` records which engine said so.
+ * Bytes live in object storage under `<tenant>/<file id>`; the user-supplied name is display-only.
+ */
+export const files = pgTable(
+  "files",
+  {
+    id: id(),
+    tenantId: tenantId().references(() => tenants.id),
+    submissionId: uuid("submission_id").notNull(),
+    originalName: text("original_name").notNull(),
+    contentType: text("content_type").notNull(),
+    sizeBytes: bigint("size_bytes", { mode: "number" }).notNull(),
+    sha256: text("sha256").notNull(),
+    storageKey: text("storage_key").notNull(),
+    scanner: text("scanner").notNull(),
+    scannedAt: timestamp("scanned_at", { withTimezone: true }).notNull(),
+    uploadedBy: uuid("uploaded_by").notNull(),
+    createdAt: createdAt(),
+  },
+  (t) => [
+    unique("files_tenant_id_id").on(t.tenantId, t.id),
+    foreignKey({ columns: [t.tenantId, t.submissionId], foreignColumns: [submissions.tenantId, submissions.id], name: "files_submission_fk" }),
+    foreignKey({ columns: [t.tenantId, t.uploadedBy], foreignColumns: [users.tenantId, users.id], name: "files_uploader_fk" }),
+    index("files_submission").on(t.tenantId, t.submissionId),
+    check("files_size_positive", sql`${t.sizeBytes} > 0`),
+  ],
+);
+
+/**
+ * Language-neutral work queue. The web app enqueues inside the same transaction as the change that
+ * caused the work; the Python worker claims jobs through SECURITY DEFINER functions (never direct table access).
+ */
+export const jobs = pgTable(
+  "jobs",
+  {
+    id: id(),
+    tenantId: tenantId().references(() => tenants.id),
+    type: text("type").notNull(),
+    payload: jsonb("payload").notNull().default(sql`'{}'::jsonb`),
+    status: jobStatusEnum("status").notNull().default("queued"),
+    attempts: integer("attempts").notNull().default(0),
+    maxAttempts: integer("max_attempts").notNull().default(5),
+    runAfter: timestamp("run_after", { withTimezone: true }).notNull().defaultNow(),
+    lockedBy: text("locked_by"),
+    lockedAt: timestamp("locked_at", { withTimezone: true }),
+    lastError: text("last_error"),
+    createdAt: createdAt(),
+    updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow(),
+  },
+  (t) => [index("jobs_claim").on(t.status, t.runAfter), index("jobs_tenant").on(t.tenantId, t.createdAt)],
 );

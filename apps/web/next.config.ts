@@ -20,7 +20,13 @@ const config: NextConfig = {
   transpilePackages: ["@taxops/core", "@taxops/db", "@taxops/services"],
   serverExternalPackages: ["pg"],
   async headers() {
-    return [{ source: "/:path*", headers: securityHeaders }];
+    const baseline = securityHeaders.filter((h) => h.key !== "Content-Security-Policy");
+    const pageCsp = securityHeaders.filter((h) => h.key === "Content-Security-Policy");
+    return [
+      { source: "/((?!api/files/).*)", headers: [...baseline, ...pageCsp] },
+      // User-uploaded bytes: the route sets its own `default-src 'none'; sandbox` CSP, which a global rule must not override.
+      { source: "/api/files/:id", headers: baseline },
+    ];
   },
 };
 

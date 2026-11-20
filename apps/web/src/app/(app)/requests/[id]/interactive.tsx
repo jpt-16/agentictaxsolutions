@@ -1,7 +1,8 @@
 "use client";
-import { useState, useTransition } from "react";
-import { Check, MessageSquarePlus, RotateCcw, Send } from "lucide-react";
-import { addCommentAction, closeRequestAction, publishRequestAction, reviewItemAction, submitItemAction } from "../actions";
+import { useRef, useState, useTransition } from "react";
+import { useRouter } from "next/navigation";
+import { Check, MessageSquarePlus, Paperclip, RotateCcw, Send, X } from "lucide-react";
+import { addCommentAction, closeRequestAction, publishRequestAction, reviewItemAction } from "../actions";
 
 function ErrorLine({ msg }: { msg: string | null }) {
   return msg ? <p role="alert" className="mt-2 text-[12.5px]" style={{ color: "var(--red-fg)" }}>{msg}</p> : null;
@@ -35,21 +36,73 @@ export function RequestActions({ requestId, canPublish, canClose }: { requestId:
   );
 }
 
+const ACCEPT = ".xlsx,.csv,.pdf,.docx,.txt,.png,.jpg,.jpeg";
+const fmt = (n: number) => (n < 1024 * 1024 ? `${Math.max(1, Math.round(n / 1024))} KB` : `${(n / 1024 / 1024).toFixed(1)} MB`);
+
 export function SubmitForm({ requestId, itemId, resubmit }: { requestId: string; itemId: string; resubmit: boolean }) {
+  const router = useRouter();
   const [note, setNote] = useState("");
-  const [pending, start] = useTransition();
+  const [picked, setPicked] = useState<File[]>([]);
+  const [pending, setPending] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [reasons, setReasons] = useState<{ file: string; reason: string }[]>([]);
+  const input = useRef<HTMLInputElement>(null);
+
+  function addFiles(list: FileList | null) {
+    if (!list) return;
+    // Copy BEFORE resetting the input: clearing `value` empties the live FileList, and state updaters run later.
+    const added = Array.from(list);
+    setPicked((cur) => [...cur, ...added].slice(0, 10));
+    if (input.current) input.current.value = "";
+  }
+  async function submit(e: React.FormEvent) {
+    e.preventDefault();
+    setError(null); setReasons([]); setPending(true);
+    try {
+      const form = new FormData();
+      form.set("itemId", itemId); form.set("requestId", requestId); form.set("note", note);
+      picked.forEach((f) => form.append("files", f));
+      const res = await fetch("/api/submissions", { method: "POST", body: form });
+      const json = await res.json().catch(() => ({ ok: false, error: "Unexpected response from the server." }));
+      if (!json.ok) { setError(json.error); setReasons(json.reasons ?? []); return; }
+      setNote(""); setPicked([]); router.refresh();
+    } catch { setError("The upload could not be completed. Check your connection and try again."); }
+    finally { setPending(false); }
+  }
+
   return (
-    <form className="mt-3 rounded-lg border border-line bg-surface2 p-3"
-      onSubmit={(e) => { e.preventDefault(); setError(null); start(async () => { const r = await submitItemAction(requestId, itemId, note); if (!r.ok) setError(r.error); else setNote(""); }); }}>
+    <form className="mt-3 rounded-lg border border-line bg-surface2 p-3" onSubmit={submit}>
       <label className="label" htmlFor={`note-${itemId}`}>{resubmit ? "Resubmit with your updates" : "Submit your response"}</label>
       <textarea id={`note-${itemId}`} className="field" value={note} onChange={(e) => setNote(e.target.value)} maxLength={2000}
-        placeholder="Describe what you are providing (file upload arrives in the next phase)." />
-      <div className="mt-2 flex items-center justify-between">
-        <span className="hint">Reviewers are told what you submit and when.</span>
-        <button type="submit" className="btn btn-primary btn-sm" disabled={pending || note.trim().length < 3}>{pending ? "Submitting…" : resubmit ? "Resubmit" : "Submit"}</button>
+        placeholder="Describe what you are providing (basis, period, anything the reviewer should know)." />
+
+      <div className="mt-2.5">
+        <input ref={input} id={`files-${itemId}`} type="file" multiple accept={ACCEPT} className="sr-only" onChange={(e) => addFiles(e.target.files)} />
+        <label htmlFor={`files-${itemId}`} className="btn btn-secondary btn-sm cursor-pointer"><Paperclip size={13} aria-hidden /> Attach files</label>
+        <span className="hint ml-2">xlsx, csv, pdf, docx, txt, png, jpg · up to 25 MB each · scanned for malware</span>
+        {picked.length > 0 && (
+          <ul className="mt-2 space-y-1" aria-label="Files to upload">
+            {picked.map((f, i) => (
+              <li key={i} className="flex items-center justify-between gap-2 rounded-md border border-line bg-surface px-2.5 py-1.5 text-[12.5px]">
+                <span className="min-w-0 truncate text-ink">{f.name} <span className="text-muted">· {fmt(f.size)}</span></span>
+                <button type="button" className="text-muted hover:text-ink" aria-label={`Remove ${f.name}`} onClick={() => setPicked((c) => c.filter((_, j) => j !== i))}><X size={13} aria-hidden /></button>
+              </li>
+            ))}
+          </ul>
+        )}
+      </div>
+
+      <div className="mt-3 flex items-center justify-end">
+        <button type="submit" className="btn btn-primary btn-sm" disabled={pending || note.trim().length < 3}>
+          {pending ? (picked.length ? "Scanning & uploading…" : "Submitting…") : resubmit ? "Resubmit" : "Submit"}
+        </button>
       </div>
       <ErrorLine msg={error} />
+      {reasons.length > 1 && (
+        <ul className="mt-1 list-disc pl-5 text-[12.5px]" style={{ color: "var(--red-fg)" }}>
+          {reasons.map((r, i) => <li key={i}><strong>{r.file}</strong>: {r.reason}</li>)}
+        </ul>
+      )}
     </form>
   );
 }

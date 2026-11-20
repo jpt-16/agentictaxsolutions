@@ -3,6 +3,8 @@ import { todayIso, type DataType, type Role } from "@taxops/core";
 import { departments, legalEntities, tenants, users, withTenant, type Connection } from "@taxops/db";
 import { type ServiceContext } from "./context";
 import { loadSession } from "./auth";
+import { makeSeedWorkbook } from "./seed-files";
+import { submitWithFiles, type FileDeps } from "./files/upload";
 import { createRequest, getRequestDetail, publishRequest, reviewItem, submitItem, closeRequest, addComment } from "./requests";
 
 /**
@@ -50,7 +52,7 @@ const addDays = (iso: string, n: number) => {
   return d.toISOString().slice(0, 10);
 };
 
-export async function seedDemo(owner: Connection, app: Connection, opts: { slug?: string; today?: string } = {}) {
+export async function seedDemo(owner: Connection, app: Connection, opts: { slug?: string; today?: string; files?: FileDeps } = {}) {
   const slug = opts.slug ?? "northwind";
   const today = opts.today ?? todayIso();
   const tenantId = randomUUID();
@@ -92,7 +94,12 @@ export async function seedDemo(owner: Connection, app: Connection, opts: { slug?
     if (publish) await publishRequest(m, r.id);
     return { ...r, items: publish ? (await getRequestDetail(m, r.id)).items : [] };
   }
-  const submit = async (who: string, itemId: string, note: string) => submitItem(await ctx(who), itemId, { note });
+  // With file deps, submissions carry a generated (fictional) workbook so the viewer has something real to show.
+  const submit = async (who: string, itemId: string, note: string, wb?: Parameters<typeof makeSeedWorkbook>[0]) => {
+    const c = await ctx(who);
+    if (wb && opts.files) return submitWithFiles(c, opts.files, itemId, { note }, [{ name: wb.fileName, bytes: await makeSeedWorkbook(wb) }]);
+    return submitItem(c, itemId, { note });
+  };
   const approve = async (who: string, itemId: string) => reviewItem(await ctx(who), itemId, { decision: "approved", rationale: "" });
   const reject = async (who: string, itemId: string, why: string) => reviewItem(await ctx(who), itemId, { decision: "changes_requested", rationale: why });
 
@@ -108,10 +115,10 @@ export async function seedDemo(owner: Connection, app: Connection, opts: { slug?
     ],
     assignees: [dept("ACA"), dept("ACE"), dept("ACP")],
   });
-  await submit("sam", tb.items[0]!.id, "Americas TBs attached (USD/CAD/BRL), post-close as of 31 Dec.");
+  await submit("sam", tb.items[0]!.id, "Americas TBs attached (USD/CAD/BRL), post-close as of 31 Dec.", { kind: "tb", fileName: "FY2025_TB_Americas.xlsx", sheets: ["NWH – USD", "NWA – USD", "NWC – CAD", "NWB – BRL"] });
   await approve("tomas", tb.items[0]!.id);
-  await submit("lena", tb.items[1]!.id, "EMEA consolidated TB workbook, one tab per entity.");
-  await submit("mei", tb.items[2]!.id, "APAC TBs – JPY and SGD, AUD pending bank rec.");
+  await submit("lena", tb.items[1]!.id, "EMEA consolidated TB workbook, one tab per entity.", { kind: "tb", fileName: "FY2025_TB_EMEA.xlsx", sheets: ["NWU – GBP", "NWI – EUR", "NWG – EUR", "NWF – EUR", "NWN – EUR"], unbalancedSheet: "NWF – EUR" });
+  await submit("mei", tb.items[2]!.id, "APAC TBs – JPY and SGD, AUD pending bank rec.", { kind: "tb", fileName: "FY2025_TB_APAC.xlsx", sheets: ["NWS – SGD", "NWJ – JPY"] });
   await reject("naomi", tb.items[2]!.id, "AUD entity is missing; please include NWP or confirm it will follow separately.");
   await addComment(await ctx("mei"), tb.id, { body: "NWP's bank rec closes Thursday – will resubmit with all three entities then." });
 
@@ -126,7 +133,7 @@ export async function seedDemo(owner: Connection, app: Connection, opts: { slug?
     ],
     assignees: [ent("NWG"), ent("NWF"), ent("NWU"), usr("ryan")],
   });
-  await submit("lena", ic.items[1]!.id, "DE side confirmed; matches the counterparty statements.");
+  await submit("lena", ic.items[1]!.id, "DE side confirmed; matches the counterparty statements.", { kind: "intercompany", fileName: "Q4_IC_Balances_DE.xlsx", sheets: ["Trade balances"] });
   await approve("tomas", ic.items[1]!.id);
 
   // 3. Fixed assets: fully approved, awaiting close
@@ -135,7 +142,7 @@ export async function seedDemo(owner: Connection, app: Connection, opts: { slug?
     items: [item("Fixed asset register – additions and disposals", "fixed_asset_register"), item("Tax vs book depreciation schedule", "fixed_asset_register")],
     assignees: [dept("FAS")],
   });
-  for (const it of fa.items) { await submit("aisha", it.id, "Roll-forward attached with supporting invoices."); await approve("naomi", it.id); }
+  for (const it of fa.items) { await submit("aisha", it.id, "Roll-forward attached with supporting invoices.", { kind: "fixed_assets", fileName: `FY2025_FA_${it.position === 1 ? "Rollforward" : "TaxVsBook"}.xlsx`, sheets: ["Register"] }); await approve("naomi", it.id); }
   await addComment(await ctx("marcus"), fa.id, { body: "Thanks Aisha – clean pack. Closing once the audit has seen it." });
 
   // 4. R&D credit: in review
@@ -144,7 +151,7 @@ export async function seedDemo(owner: Connection, app: Connection, opts: { slug?
     items: [item("Qualified wages by project", "rd_credit"), item("Contract research and supplies", "rd_credit"), item("Project narratives", "narrative")],
     assignees: [dept("RND"), usr("jack")],
   });
-  for (const it of rd.items) await submit("jack", it.id, "Submitted for review.");
+  for (const it of rd.items) await submit("jack", it.id, "Submitted for review.", it.position === 3 ? undefined : { kind: "rd", fileName: it.position === 1 ? "QRE_Wages_by_Project.xlsx" : "QRE_Contract_Supplies.xlsx", sheets: ["QREs"] });
 
   // 5. Transfer pricing: changes requested
   const tp = await make("elena", {
@@ -152,7 +159,7 @@ export async function seedDemo(owner: Connection, app: Connection, opts: { slug?
     items: [item("Cost base and markup by service line", "transfer_pricing"), item("Benchmarking support", "transfer_pricing")],
     assignees: [ent("NWG"), ent("NWU"), ent("NWI")],
   });
-  await submit("oliver", tp.items[0]!.id, "Cost base for UK shared services, 7% markup.");
+  await submit("oliver", tp.items[0]!.id, "Cost base for UK shared services, 7% markup.", { kind: "transfer_pricing", fileName: "UK_SharedServices_CostBase.xlsx", sheets: ["Cost base"] });
   await reject("tomas", tp.items[0]!.id, "Cost base appears to include pass-through costs; please split them out.");
 
   // 6. Treasury: just opened

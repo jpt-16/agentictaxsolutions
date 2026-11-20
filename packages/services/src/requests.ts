@@ -6,9 +6,11 @@ import {
   type Actor, type AssigneeRef, type ItemStatus, type RequestStatus,
 } from "@taxops/core";
 import {
-  assignments, auditEvents, comments, departments, legalEntities, recordAudit, requestItems, requests, reviews,
+  assignments, auditEvents, comments, departments, files as filesTable, jobs, legalEntities, recordAudit, requestItems, requests, reviews,
   submissions, users, type Tx,
 } from "@taxops/db";
+import type { StoredFile } from "./files/types";
+import { isPreviewable } from "./files/validate";
 import { actorOf, auditActorOf, NotFoundError, scoped, todayOf, type ServiceContext } from "./context";
 
 /* ------------------------------------------------------------------ visibility */
@@ -33,7 +35,7 @@ async function assigneeRefs(tx: Tx, requestId: string): Promise<AssigneeRef[]> {
 }
 
 /** Loads a request the actor may see, or throws NotFound (never reveals that a hidden request exists). */
-async function loadVisibleRequest(tx: Tx, ctx: ServiceContext, requestId: string, lock = false) {
+export async function loadVisibleRequest(tx: Tx, ctx: ServiceContext, requestId: string, lock = false) {
   const q = tx.select().from(requests).where(eq(requests.id, requestId));
   const [req] = lock ? await q.for("update") : await q;
   if (!req) throw new NotFoundError("Request");
@@ -127,6 +129,8 @@ async function assigneeLabels(tx: Tx, requestIds: string[]): Promise<Map<string,
   return map;
 }
 
+const kindFromName = (n: string) => (n.split(".").pop() ?? "").toLowerCase();
+
 /* ------------------------------------------------------------------ detail */
 
 export async function getRequestDetail(ctx: ServiceContext, requestId: string) {
@@ -145,6 +149,13 @@ export async function getRequestDetail(ctx: ServiceContext, requestId: string) {
         .innerJoin(requestItems, and(eq(requestItems.tenantId, submissions.tenantId), eq(requestItems.id, submissions.itemId)))
         .innerJoin(users, and(eq(users.tenantId, submissions.tenantId), eq(users.id, submissions.submittedBy)))
         .where(eq(requestItems.requestId, requestId)).orderBy(desc(submissions.version));
+    const fileRows = await tx.select({
+        id: filesTable.id, submissionId: filesTable.submissionId, name: filesTable.originalName, contentType: filesTable.contentType,
+        size: filesTable.sizeBytes, sha256: filesTable.sha256,
+      }).from(filesTable)
+        .innerJoin(submissions, and(eq(submissions.tenantId, filesTable.tenantId), eq(submissions.id, filesTable.submissionId)))
+        .innerJoin(requestItems, and(eq(requestItems.tenantId, submissions.tenantId), eq(requestItems.id, submissions.itemId)))
+        .where(eq(requestItems.requestId, requestId)).orderBy(asc(filesTable.originalName));
     const reviewRows = await tx.select({
         submissionId: reviews.submissionId, decision: reviews.decision, rationale: reviews.rationale,
         reviewerName: users.name, createdAt: reviews.createdAt,
@@ -160,7 +171,7 @@ export async function getRequestDetail(ctx: ServiceContext, requestId: string) {
     const activity = await tx.select({
         id: auditEvents.id, occurredAt: auditEvents.occurredAt, actorLabel: auditEvents.actorLabel,
         action: auditEvents.action, summary: auditEvents.summary,
-      }).from(auditEvents).where(eq(auditEvents.requestRef, requestId)).orderBy(desc(auditEvents.seq)).limit(100);
+      }).from(auditEvents).where(and(eq(auditEvents.requestRef, requestId), sql`${auditEvents.action} not in ('file.viewed', 'file.downloaded')`)).orderBy(desc(auditEvents.seq)).limit(100);
     const creator = await tx.select({ name: users.name }).from(users).where(eq(users.id, req.createdBy));
 
     const reviewBySub = new Map(reviewRows.map((r) => [r.submissionId, r]));
@@ -169,7 +180,12 @@ export async function getRequestDetail(ctx: ServiceContext, requestId: string) {
 
     const editable = req.status !== "draft" && req.status !== "closed" && req.status !== "approved";
     const itemDtos = items.map((it) => {
-      const history = (subsByItem.get(it.id) ?? []).map((s) => ({ ...s, review: reviewBySub.get(s.id) ?? null }));
+      const history = (subsByItem.get(it.id) ?? []).map((s) => ({
+        ...s, review: reviewBySub.get(s.id) ?? null,
+        files: fileRows.filter((f) => f.submissionId === s.id).map((f) => ({
+          id: f.id, name: f.name, size: f.size, sha256: f.sha256, previewable: isPreviewable(kindFromName(f.name)),
+        })),
+      }));
       const latest = history[0] ?? null;
       return {
         id: it.id, position: it.position, title: it.title, description: it.description, dataType: it.dataType,
@@ -303,7 +319,7 @@ function assertWorkable(status: RequestStatus) {
   }
 }
 
-export async function submitItem(ctx: ServiceContext, itemId: string, rawInput: unknown) {
+export async function submitItem(ctx: ServiceContext, itemId: string, rawInput: unknown, attachments: StoredFile[] = []) {
   assertCan(ctx.session.role, "item.submit");
   const input = submitItemSchema.parse(rawInput);
   return scoped(ctx, async (tx) => {
@@ -311,14 +327,25 @@ export async function submitItem(ctx: ServiceContext, itemId: string, rawInput: 
     assertWorkable(req.status);
     assertItemTransition(item.status, "submitted");
     const version = ((await tx.select({ n: sql<number>`count(*)::int` }).from(submissions).where(eq(submissions.itemId, itemId)))[0]!.n) + 1;
-    await tx.insert(submissions).values({
+    const [sub] = await tx.insert(submissions).values({
       tenantId: ctx.session.tenantId, itemId, version, submittedBy: ctx.session.userId, note: input.note,
-    });
+    }).returning({ id: submissions.id });
+    if (attachments.length) {
+      await tx.insert(filesTable).values(attachments.map((f) => ({
+        id: f.id, tenantId: ctx.session.tenantId, submissionId: sub!.id, originalName: f.name, contentType: f.contentType,
+        sizeBytes: f.size, sha256: f.sha256, storageKey: f.storageKey, scanner: f.scanner, scannedAt: f.scannedAt, uploadedBy: ctx.session.userId,
+      })));
+      // Same transaction as the submission: downstream agents are told about a file only if the submission really committed.
+      await tx.insert(jobs).values(attachments.map((f) => ({
+        tenantId: ctx.session.tenantId, type: "file.uploaded",
+        payload: { fileId: f.id, submissionId: sub!.id, itemId, requestId: req.id, kind: f.kind },
+      })));
+    }
     await tx.update(requestItems).set({ status: "submitted", updatedAt: new Date() }).where(eq(requestItems.id, itemId));
     await recordAudit(tx, {
       tenantId: ctx.session.tenantId, actor: auditActorOf(ctx), action: "item.submitted", entityType: "request_item",
       entityId: itemId, requestRef: req.id, summary: `Submitted "${item.title}" (v${version}) on ${req.reference}`,
-      before: { status: item.status }, after: { status: "submitted", version, note: input.note },
+      before: { status: item.status }, after: { status: "submitted", version, note: input.note, files: attachments.map((f) => ({ id: f.id, name: f.name, size: f.size, sha256: f.sha256, scanner: f.scanner })) },
     });
     await syncRequestStatus(tx, ctx, req);
   });

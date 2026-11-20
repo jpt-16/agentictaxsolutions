@@ -2,6 +2,9 @@
  * (`pnpm db:reset`), and Playwright with Chromium available (`require('playwright')`).
  * Usage: node scripts/e2e-smoke.cjs */
 const { chromium } = require("playwright");
+const path = require("node:path");
+// exceljs lives in the services package; resolve it from there so this script needs no extra install.
+const ExcelJS = require(require.resolve("exceljs", { paths: [path.join(__dirname, "../packages/services")] }));
 const assert = require("node:assert/strict");
 const BASE = process.env.BASE_URL ?? "http://localhost:3000";
 
@@ -52,13 +55,71 @@ const BASE = process.env.BASE_URL ?? "http://localhost:3000";
   const item = (title) => page.locator('li[id^="item-"]', { hasText: title });
   const btn = (title, name) => item(title).getByRole("button", { name, exact: true });
 
+  const workbook = async (cell) => {
+    const wb = new ExcelJS.Workbook();
+    const ws = wb.addWorksheet("Depreciation");
+    ws.addRow(["Asset class", "Opening cost", "Closing cost"]);
+    ws.addRow(["Machinery", 1250000, cell]);
+    return Buffer.from(await wb.xlsx.writeBuffer());
+  };
+  const XLSX_MIME = "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet";
+
   await login("Sam Whitfield"); // Accounting – Americas: assigned
   await page.goto(requestUrl);
-  await item(ITEM1).locator("textarea").fill("US depreciation schedule attached, tied to GL.");
+
+  // A virus is blocked in the UI: nothing is submitted
+  await item(ITEM1).locator("textarea").fill("Attaching the schedule.");
+  await item(ITEM1).locator('input[type="file"]').setInputFiles({ name: "notes.txt", mimeType: "text/plain", buffer: Buffer.from("X5O!P%@AP[4\\PZX54(P^)7CC)7}$EICAR-STANDARD-ANTIVIRUS-TEST-FILE!$H+H*") });
+  await item(ITEM1).getByText("notes.txt").waitFor(); // the attachment must be visibly queued before submitting
   await btn(ITEM1, "Submit").click();
-  await item(ITEM1).getByText("US depreciation schedule attached").waitFor();
-  step("assigned contributor submitted an item");
+  await item(ITEM1).getByText("blocked by the virus scan").waitFor();
+  assert.match(await item(ITEM1).innerText(), /Pending/);
+  step("EICAR test virus was blocked; item stayed pending");
+
+  // A macro-enabled workbook is refused with guidance
+  await item(ITEM1).locator('input[type="file"]').setInputFiles({ name: "book.xlsm", mimeType: XLSX_MIME, buffer: await workbook(1) });
+  await btn(ITEM1, "Submit").click();
+  await item(ITEM1).getByText(/Macro-enabled/).waitFor();
+  step("macro-enabled workbook was refused with a helpful message");
+
+  // A clean workbook goes through
+  await item(ITEM1).locator('input[type="file"]').setInputFiles([]); // clear browser selection
+  await page.reload();
+  await item(ITEM1).locator("textarea").fill("US depreciation schedule attached, tied to GL.");
+  await item(ITEM1).locator('input[type="file"]').setInputFiles({ name: "Depreciation_US.xlsx", mimeType: XLSX_MIME, buffer: await workbook(1180000) });
+  await btn(ITEM1, "Submit").click();
+  await item(ITEM1).getByText("Depreciation_US.xlsx").waitFor();
+  step("assigned contributor submitted an item with a scanned workbook");
+
+  // Viewer + authorized download
+  await item(ITEM1).getByRole("link", { name: "View" }).click();
+  await page.waitForSelector("text=Read-only preview");
+  await page.getByRole("cell", { name: "Machinery" }).waitFor();
+  await page.getByRole("cell", { name: "1180000" }).waitFor();
+  step("spreadsheet viewer renders the workbook contents");
+  const fileHref = await (async () => { await page.goBack(); return item(ITEM1).locator('a[href^="/api/files/"]').first().getAttribute("href"); })();
+  const dl = await page.context().request.get(`${BASE}${fileHref}`);
+  assert.equal(dl.status(), 200);
+  assert.match(dl.headers()["content-disposition"], /^attachment; filename="Depreciation_US\.xlsx"/);
+  assert.equal(dl.headers()["x-content-type-options"], "nosniff");
+  assert.match(dl.headers()["content-security-policy"], /sandbox/);
+  step("download is an attachment with nosniff + sandbox CSP");
+  await item(ITEM2).locator("textarea").fill("No disposals this year; confirmed with fixed assets.");
+  await btn(ITEM2, "Submit").click();
+  await item(ITEM2).getByText("No disposals this year").waitFor();
   await logout();
+
+  // Access control on files: unassigned contributor and anonymous callers get nothing
+  await login("Hiro Tanaka");
+  const denied = await page.context().request.get(`${BASE}${fileHref}`);
+  assert.equal(denied.status(), 404);
+  step("unassigned contributor cannot download the file (404)");
+  await logout();
+  const anon = await (await browser.newContext()).request.get(`${BASE}${fileHref}`);
+  assert.equal(anon.status(), 401);
+  const csrf = await (await browser.newContext()).request.post(`${BASE}/api/submissions`, { headers: { origin: "http://evil.example" }, multipart: { itemId: "x" } });
+  assert.equal(csrf.status(), 403);
+  step("anonymous download is 401; cross-origin upload is refused (403)");
 
   // 3. Reviewer requests changes, contributor resubmits, reviewer approves both
   await login("Naomi Clarke");
@@ -74,10 +135,7 @@ const BASE = process.env.BASE_URL ?? "http://localhost:3000";
   await item(ITEM1).locator("textarea").fill("Split by quarter in tab 2.");
   await btn(ITEM1, "Resubmit").click();
   await item(ITEM1).getByText("Split by quarter in tab 2.").waitFor();
-  await item(ITEM2).locator("textarea").fill("No disposals this year; confirmed with fixed assets.");
-  await btn(ITEM2, "Submit").click();
-  await item(ITEM2).getByText("No disposals this year").waitFor();
-  step("contributor resubmitted item 1 (v2) and submitted item 2");
+  step("contributor resubmitted item 1 (v2)");
   await logout();
 
   await login("Naomi Clarke");
@@ -104,7 +162,7 @@ const BASE = process.env.BASE_URL ?? "http://localhost:3000";
   await page.goto(`${BASE}/audit?verify=1`);
   await page.waitForSelector("text=Chain intact");
   const audit = await page.locator("body").innerText();
-  for (const a of ["request.created", "request.published", "item.submitted", "item.changes_requested", "item.approved", "request.closed"]) {
+  for (const a of ["request.created", "request.published", "item.submitted", "item.changes_requested", "item.approved", "request.closed", "file.rejected", "file.viewed", "file.downloaded"]) {
     assert.ok(audit.includes(a), `audit log should include ${a}`);
   }
   step("auditor sees the full trail and the hash chain verifies");

@@ -27,6 +27,11 @@ jobs:
       - run: pnpm typecheck
       - run: pnpm test
       - run: pnpm build
+      # Worker tests run against the same migrated Postgres the TypeScript tests just created.
+      - uses: actions/setup-python@v5
+        with: { python-version: "3.12" }
+      - name: Agent worker tests (real Postgres)
+        run: pip install -e "services/agent-worker[dev]" && pytest -q services/agent-worker
 
   python:
     runs-on: ubuntu-latest

@@ -15,7 +15,7 @@ export async function resetTestDb(): Promise<void> {
     await owner.db.execute(sql`drop schema if exists drizzle cascade`);
     await owner.db.execute(sql`create schema public authorization taxops_owner`);
     await owner.db.execute(sql`revoke all on schema public from public`);
-    await owner.db.execute(sql`grant usage on schema public to taxops_app`);
+    await owner.db.execute(sql`grant usage on schema public to taxops_app, taxops_worker`);
   } finally {
     await owner.close();
   }
@@ -53,3 +53,5 @@ export async function createTestTenant(owner: Connection, label = "t"): Promise<
   });
   return { tenantId, slug, entityId, departmentId, users };
 }
+
+export const TEST_WORKER_URL = process.env.TEST_WORKER_DATABASE_URL ?? "postgres://taxops_worker:taxops_worker@localhost:5433/taxops_test";

@@ -57,7 +57,7 @@ export async function getDashboard(ctx: ServiceContext) {
       ? await tx.select({
           id: auditEvents.id, occurredAt: auditEvents.occurredAt, actorLabel: auditEvents.actorLabel,
           action: auditEvents.action, summary: auditEvents.summary, requestRef: auditEvents.requestRef,
-        }).from(auditEvents).where(inArray(auditEvents.requestRef, ids)).orderBy(desc(auditEvents.seq)).limit(8)
+        }).from(auditEvents).where(and(inArray(auditEvents.requestRef, ids), sql`${auditEvents.action} not in ('file.viewed', 'file.downloaded')`)).orderBy(desc(auditEvents.seq)).limit(8)
       : [];
 
     const totalActiveItems = activeItems.length;

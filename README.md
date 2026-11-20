@@ -3,8 +3,8 @@
 An enterprise platform where tax teams request data from departments and subsidiaries, collect it, and (in later
 phases) have AI agents standardize and validate it, with human review and a tamper-evident audit trail.
 
-> **Status: Phases 0 + 1.** The workflow core (requests, assignments, deadlines, statuses, review, audit) is built and
-> tested. File upload and the AI agents are Phases 2–4. **All data is fictional. Do not connect real corporate data.**
+> **Status: Phases 0–2.** The workflow core and secure file handling (upload, malware scanning, versioning, viewer,
+> job queue) are built and tested. The AI agents are Phases 3–4. **All data is fictional. Do not connect real corporate data.**
 
 ## What works today
 
@@ -55,8 +55,14 @@ Sign in by picking a persona on the login page (development-only, no password):
 ```bash
 pnpm typecheck
 pnpm test                          # core + database security + services (needs the local Postgres above)
-node scripts/e2e-smoke.cjs         # full UI workflow; needs `pnpm dev` + fresh seed + Playwright
-cd services/agent-worker && pip install -e ".[dev]" && pytest
+node scripts/e2e-smoke.cjs         # full UI workflow incl. uploads; needs `pnpm dev` + fresh seed + Playwright
+cd services/agent-worker && pip install -e ".[dev]" && pytest   # worker tests need the Postgres test DB (run `pnpm test` first)
+```
+
+Run the queue worker (it idles until agents are registered in Phase 3):
+
+```bash
+cd services/agent-worker && WORKER_DATABASE_URL=postgres://taxops_worker:taxops_worker@localhost:5433/taxops python -m taxops_agents
 ```
 
 The database tests run against a separate `taxops_test` database that they reset on every run.

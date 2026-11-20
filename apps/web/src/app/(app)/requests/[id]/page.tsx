@@ -1,5 +1,6 @@
 import { notFound } from "next/navigation";
-import { CalendarClock, Info, Lock, MessageSquare, User2 } from "lucide-react";
+import Link from "next/link";
+import { CalendarClock, Download, FileSpreadsheet, FileText, Info, Lock, MessageSquare, User2 } from "lucide-react";
 import { DATA_TYPE_LABELS, ROLE_LABELS } from "@taxops/core";
 import { getRequestDetail, NotFoundError } from "@taxops/services";
 import { requireContext } from "@/lib/auth";
@@ -95,6 +96,23 @@ export default async function RequestPage({ params, searchParams }: {
                               <span>{formatDateTime(s.createdAt)}</span>
                             </p>
                             <p className="mt-1.5 whitespace-pre-wrap text-[13px] text-body">{s.note}</p>
+                            {s.files.length > 0 && (
+                              <ul className="mt-2 space-y-1.5" aria-label={`Files in version ${s.version}`}>
+                                {s.files.map((f) => (
+                                  <li key={f.id} className="flex items-center justify-between gap-3 rounded-md border border-line bg-surface2 px-2.5 py-1.5 text-[12.5px]">
+                                    <span className="flex min-w-0 items-center gap-2 text-ink">
+                                      {f.previewable ? <FileSpreadsheet size={15} aria-hidden className="flex-none text-muted" /> : <FileText size={15} aria-hidden className="flex-none text-muted" />}
+                                      <span className="truncate font-medium">{f.name}</span>
+                                      <span className="tnum flex-none text-muted">{f.size < 1048576 ? `${Math.max(1, Math.round(f.size / 1024))} KB` : `${(f.size / 1048576).toFixed(1)} MB`}</span>
+                                    </span>
+                                    <span className="flex flex-none items-center gap-1">
+                                      {f.previewable && <Link className="btn btn-ghost btn-sm" href={`/requests/${r.id}/files/${f.id}`}>View</Link>}
+                                      <a className="btn btn-ghost btn-sm" href={`/api/files/${f.id}`} aria-label={`Download ${f.name}`}><Download size={13} aria-hidden /></a>
+                                    </span>
+                                  </li>
+                                ))}
+                              </ul>
+                            )}
                             {s.review && (
                               <p className="mt-2 rounded-md px-2.5 py-1.5 text-[12.5px]"
                                 style={s.review.decision === "approved"

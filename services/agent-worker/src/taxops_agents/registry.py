@@ -29,5 +29,9 @@ class AgentRegistry:
     def for_event(self, event: str) -> list[type[Agent]]:
         return [a for a in self._agents.values() if event in a.spec.triggers]
 
+    def events(self) -> list[str]:
+        """Every event type at least one agent listens to (what the worker asks the queue for)."""
+        return sorted({e for a in self._agents.values() for e in a.spec.triggers})
+
     def names(self) -> list[str]:
         return sorted(self._agents)

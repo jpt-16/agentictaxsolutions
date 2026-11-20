@@ -11,3 +11,4 @@ __pycache__
 .ruff_cache
 next-env.d.ts
 apps/web/AGENTS.md
+.storage
