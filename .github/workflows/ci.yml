@@ -31,7 +31,7 @@ jobs:
       - uses: actions/setup-python@v5
         with: { python-version: "3.12" }
       - name: Agent worker tests (real Postgres)
-        run: pip install -e "services/agent-worker[dev]" && pytest -q services/agent-worker
+        run: pip install -e "services/agent-worker[dev]" && ruff check services/agent-worker/src services/agent-worker/tests && pytest -q services/agent-worker
 
   python:
     runs-on: ubuntu-latest

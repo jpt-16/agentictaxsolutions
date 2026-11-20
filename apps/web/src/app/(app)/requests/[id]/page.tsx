@@ -1,6 +1,6 @@
 import { notFound } from "next/navigation";
 import Link from "next/link";
-import { CalendarClock, Download, FileSpreadsheet, FileText, Info, Lock, MessageSquare, User2 } from "lucide-react";
+import { Bot, CalendarClock, Download, FileSpreadsheet, FileText, Info, Lock, MessageSquare, User2 } from "lucide-react";
 import { DATA_TYPE_LABELS, ROLE_LABELS } from "@taxops/core";
 import { getRequestDetail, NotFoundError } from "@taxops/services";
 import { requireContext } from "@/lib/auth";
@@ -11,6 +11,21 @@ import {
 import { CommentForm, RequestActions, ReviewForm, SubmitForm } from "./interactive";
 
 export const dynamic = "force-dynamic";
+
+function ExtractionBadge({ e }: { e: NonNullable<Awaited<ReturnType<typeof getRequestDetail>>["items"][number]["submissions"][number]["files"][number]["extraction"]> }) {
+  const link = (label: string, tone: "violet" | "green" | "amber") => (
+    <Link href={`/review/${e.firstProposalId}`} className="inline-flex"><Badge tone={tone}><Bot size={11} aria-hidden /> {label}</Badge></Link>
+  );
+  switch (e.state) {
+    case "review": return link(e.pending > 1 ? `${e.pending} results to review` : "Review AI result", "violet");
+    case "accepted": return link("AI result accepted", "green");
+    case "rejected": return link("AI result rejected", "amber");
+    case "queued": return <span title="Waiting for the AI worker to process this file"><Badge tone="slate"><Bot size={11} aria-hidden /> AI queued</Badge></span>;
+    case "skipped": return <span title={e.detail}><Badge tone="slate"><Bot size={11} aria-hidden /> AI not run</Badge></span>;
+    case "failed": return <span title={e.detail}><Badge tone="red"><Bot size={11} aria-hidden /> AI failed</Badge></span>;
+    default: return <span title={e.detail}><Badge tone="slate"><Bot size={11} aria-hidden /> No data extracted</Badge></span>;
+  }
+}
 export async function generateMetadata({ params }: { params: Promise<{ id: string }> }) {
   return { title: "Request" };
 }
@@ -106,6 +121,7 @@ export default async function RequestPage({ params, searchParams }: {
                                       <span className="tnum flex-none text-muted">{f.size < 1048576 ? `${Math.max(1, Math.round(f.size / 1024))} KB` : `${(f.size / 1048576).toFixed(1)} MB`}</span>
                                     </span>
                                     <span className="flex flex-none items-center gap-1">
+                                      {f.extraction && <ExtractionBadge e={f.extraction} />}
                                       {f.previewable && <Link className="btn btn-ghost btn-sm" href={`/requests/${r.id}/files/${f.id}`}>View</Link>}
                                       <a className="btn btn-ghost btn-sm" href={`/api/files/${f.id}`} aria-label={`Download ${f.name}`}><Download size={13} aria-hidden /></a>
                                     </span>

@@ -22,11 +22,13 @@ export const PERMISSIONS = [
   "comment.create",
   "audit.read",
   "user.read",
+  "proposal.read", // see AI-generated proposals
+  "proposal.review", // accept or reject them
 ] as const;
 export type Permission = (typeof PERMISSIONS)[number];
 
 const MATRIX: Record<Role, readonly Permission[]> = {
-  tenant_admin: ["dashboard.read", "request.read.all", "audit.read", "user.read"],
+  tenant_admin: ["dashboard.read", "request.read.all", "audit.read", "user.read", "proposal.read"],
   tax_manager: [
     "dashboard.read",
     "request.read.all",
@@ -38,10 +40,12 @@ const MATRIX: Record<Role, readonly Permission[]> = {
     "comment.create",
     "audit.read",
     "user.read",
+    "proposal.read",
+    "proposal.review",
   ],
-  tax_reviewer: ["dashboard.read", "request.read.all", "item.review", "comment.create", "user.read"],
+  tax_reviewer: ["dashboard.read", "request.read.all", "item.review", "comment.create", "user.read", "proposal.read", "proposal.review"],
   contributor: ["dashboard.read", "request.read.assigned", "item.submit", "comment.create"],
-  auditor: ["dashboard.read", "request.read.all", "audit.read", "user.read"],
+  auditor: ["dashboard.read", "request.read.all", "audit.read", "user.read", "proposal.read"],
 };
 
 export function can(role: Role, permission: Permission): boolean {

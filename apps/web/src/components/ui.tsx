@@ -2,7 +2,7 @@ import clsx from "clsx";
 import Link from "next/link";
 import type { ReactNode } from "react";
 import {
-  ITEM_STATUS_LABELS, REQUEST_STATUS_LABELS, type ItemStatus, type Priority, type RequestStatus,
+  ITEM_STATUS_LABELS, REQUEST_STATUS_LABELS, confidenceBand, type ItemStatus, type Priority, type RequestStatus,
 } from "@taxops/core";
 
 export const cn = clsx;
@@ -129,4 +129,10 @@ export function Chip({ children, kind }: { children: ReactNode; kind?: "departme
       {children}
     </span>
   );
+}
+
+/** Where to look first, never a gate: a person reviews every AI result regardless of this number. */
+export function ConfidencePill({ value }: { value: number }) {
+  const band = confidenceBand(value);
+  return <Badge tone={band === "high" ? "green" : band === "medium" ? "amber" : "red"}>{Math.round(value * 100)}% confidence</Badge>;
 }

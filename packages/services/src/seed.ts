@@ -59,7 +59,8 @@ export async function seedDemo(owner: Connection, app: Connection, opts: { slug?
   const entityId = new Map<string, string>(), deptId = new Map<string, string>(), userId = new Map<string, string>();
 
   await withTenant(owner.db, { tenantId }, async (tx) => {
-    await tx.insert(tenants).values({ id: tenantId, name: "Northwind Holdings (fictional demo)", slug });
+    // AI extraction is on for the demo; sending content to an external LLM stays OFF until a tenant admin opts in.
+    await tx.insert(tenants).values({ id: tenantId, name: "Northwind Holdings (fictional demo)", slug, aiExtractionEnabled: true, externalLlmEnabled: false });
     for (const [code, name, country, currency] of ENTITIES) {
       const id = randomUUID(); entityId.set(code, id);
       await tx.insert(legalEntities).values({ id, tenantId, code, name, country, currency });

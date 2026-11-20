@@ -1,10 +1,10 @@
 import Link from "next/link";
-import { AlertTriangle, CalendarClock, CheckCircle2, ClipboardCheck, FileStack, Plus, ArrowRight, Inbox } from "lucide-react";
+import { AlertTriangle, Bot, CalendarClock, CheckCircle2, ClipboardCheck, FileStack, Plus, ArrowRight, Inbox } from "lucide-react";
 import { can, REQUEST_STATUSES, REQUEST_STATUS_LABELS, ROLE_LABELS, type RequestStatus } from "@taxops/core";
-import { getDashboard } from "@taxops/services";
+import { getDashboard, listProposals } from "@taxops/services";
 import { requireContext } from "@/lib/auth";
 import {
-  Card, CardHeader, EmptyState, PageHeader, PriorityBadge, ProgressBar, RequestStatusBadge, ItemStatusBadge,
+  Card, CardHeader, ConfidencePill, EmptyState, PageHeader, PriorityBadge, ProgressBar, RequestStatusBadge, ItemStatusBadge,
   dueLabel, formatDate, formatDateTime, cn,
 } from "@/components/ui";
 
@@ -35,6 +35,7 @@ function Kpi({ label, value, hint, icon: Icon, href, tone }: {
 export default async function DashboardPage() {
   const ctx = await requireContext();
   const d = await getDashboard(ctx);
+  const ai = can(ctx.session.role, "proposal.read") ? await listProposals(ctx, { status: "pending", limit: 5 }) : null;
   const { role, name } = ctx.session;
   const total = REQUEST_STATUSES.reduce((n, s) => n + d.byStatus[s], 0);
   const queueTitle = d.queueKind === "submit" ? "Your tasks" : "Awaiting your review";
@@ -134,6 +135,27 @@ export default async function DashboardPage() {
                           <span className="tnum">{q.reference}</span> · due {formatDate(q.dueDate)}
                           {q.overdue && <span className="font-medium" style={{ color: "var(--red-fg)" }}> · overdue</span>}
                         </p>
+                      </Link>
+                    </li>
+                  ))}
+                </ul>
+              )}
+            </Card>
+          )}
+
+          {ai && (
+            <Card>
+              <CardHeader title="AI results to review" subtitle={ai.total ? `${ai.total} awaiting a person's check` : "Extracted data waiting for review"}
+                action={ai.total ? <Link href="/review" className="btn btn-ghost btn-sm">View all <ArrowRight size={13} aria-hidden /></Link> : undefined} />
+              {ai.rows.length === 0 ? (
+                <EmptyState icon={<Bot size={18} />} title="No AI results waiting" body="Extracted data from submitted files appears here for review." />
+              ) : (
+                <ul className="divide-y divide-line">
+                  {ai.rows.map((r) => (
+                    <li key={r.id}>
+                      <Link href={`/review/${r.id}`} className="block px-5 py-3 transition-colors hover:bg-surface2">
+                        <div className="flex items-start justify-between gap-3"><p className="font-medium text-ink">{r.title}</p><ConfidencePill value={r.confidence} /></div>
+                        <p className="mt-0.5 text-[12px] text-muted"><span className="tnum">{r.requestRef}</span> · {r.fileName} · {r.rowCount} rows</p>
                       </Link>
                     </li>
                   ))}

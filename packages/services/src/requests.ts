@@ -10,6 +10,7 @@ import {
   submissions, users, type Tx,
 } from "@taxops/db";
 import type { StoredFile } from "./files/types";
+import { extractionByFile } from "./proposals";
 import { isPreviewable } from "./files/validate";
 import { actorOf, auditActorOf, NotFoundError, scoped, todayOf, type ServiceContext } from "./context";
 
@@ -156,6 +157,7 @@ export async function getRequestDetail(ctx: ServiceContext, requestId: string) {
         .innerJoin(submissions, and(eq(submissions.tenantId, filesTable.tenantId), eq(submissions.id, filesTable.submissionId)))
         .innerJoin(requestItems, and(eq(requestItems.tenantId, submissions.tenantId), eq(requestItems.id, submissions.itemId)))
         .where(eq(requestItems.requestId, requestId)).orderBy(asc(filesTable.originalName));
+    const extraction = await extractionByFile(tx, ctx, fileRows.map((f) => f.id));
     const reviewRows = await tx.select({
         submissionId: reviews.submissionId, decision: reviews.decision, rationale: reviews.rationale,
         reviewerName: users.name, createdAt: reviews.createdAt,
@@ -183,7 +185,7 @@ export async function getRequestDetail(ctx: ServiceContext, requestId: string) {
       const history = (subsByItem.get(it.id) ?? []).map((s) => ({
         ...s, review: reviewBySub.get(s.id) ?? null,
         files: fileRows.filter((f) => f.submissionId === s.id).map((f) => ({
-          id: f.id, name: f.name, size: f.size, sha256: f.sha256, previewable: isPreviewable(kindFromName(f.name)),
+          id: f.id, name: f.name, size: f.size, sha256: f.sha256, previewable: isPreviewable(kindFromName(f.name)), extraction: extraction?.get(f.id) ?? null,
         })),
       }));
       const latest = history[0] ?? null;

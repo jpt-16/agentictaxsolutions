@@ -1,10 +1,9 @@
 import { appUrl, connect, ownerUrl } from "@taxops/db";
-import path from "node:path";
 import { seedDemo } from "../seed";
 import { EicarScanner } from "../files/scanner";
-import { LocalStorage } from "../files/storage";
+import { LocalStorage, resolveStorageDir } from "../files/storage";
 
-const storageDir = process.env.STORAGE_DIR ?? path.resolve(process.cwd(), "../../.storage");
+const storageDir = resolveStorageDir();
 const owner = connect(ownerUrl(), { max: 2 });
 const app = connect(appUrl(), { max: 4 });
 try {

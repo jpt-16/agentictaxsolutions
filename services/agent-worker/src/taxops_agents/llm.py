@@ -102,9 +102,22 @@ class FakeGateway:
         return nxt
 
 
-def build_gateway(provider: str | None = None) -> LLMGateway:
+class NullGateway:
+    """Used when no model may be called (no API key, or the tenant has not allowed external LLM use)."""
+
+    def __init__(self, reason: str = "External LLM calls are not available.") -> None:
+        self.reason = reason
+
+    def generate_structured(self, prompt: str, schema: type[T], *, system: str | None = None) -> T:
+        raise LLMError(self.reason)
+
+
+def build_gateway(provider: str | None = None, *, optional: bool = False) -> LLMGateway:
+    """With optional=True a missing key yields a NullGateway, so agents degrade to their deterministic path."""
     provider = (provider or os.environ.get("LLM_PROVIDER", "gemini")).lower()
     if provider == "gemini":
+        if optional and not os.environ.get("GEMINI_API_KEY"):
+            return NullGateway("GEMINI_API_KEY is not set.")
         return GeminiGateway()
     if provider == "fake":
         return FakeGateway()

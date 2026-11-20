@@ -1,5 +1,5 @@
 import {
-  bigint, boolean, check, date, foreignKey, index, integer, jsonb, pgEnum, pgTable, text, timestamp, unique, uuid,
+  bigint, boolean, check, numeric, date, foreignKey, index, integer, jsonb, pgEnum, pgTable, text, timestamp, unique, uuid,
 } from "drizzle-orm/pg-core";
 import { sql } from "drizzle-orm";
 import { DATA_TYPES, ITEM_STATUSES, PRIORITIES, REQUEST_STATUSES, ROLES } from "@taxops/core";
@@ -19,6 +19,10 @@ export const dataTypeEnum = pgEnum("data_type", DATA_TYPES);
 export const assigneeTypeEnum = pgEnum("assignee_type", ["department", "entity", "user"]);
 export const reviewDecisionEnum = pgEnum("review_decision", ["approved", "changes_requested"]);
 export const jobStatusEnum = pgEnum("job_status", ["queued", "running", "succeeded", "dead"]);
+export const runStatusEnum = pgEnum("run_status", ["succeeded", "skipped", "failed"]);
+export const proposalKindEnum = pgEnum("proposal_kind", ["extraction", "finding"]);
+export const proposalStatusEnum = pgEnum("proposal_status", ["pending", "accepted", "rejected", "superseded"]);
+export const severityEnum = pgEnum("severity", ["info", "warning", "error"]);
 export const actorTypeEnum = pgEnum("actor_type", ["user", "agent", "system"]);
 
 const id = () => uuid("id").primaryKey().defaultRandom();
@@ -29,6 +33,10 @@ export const tenants = pgTable("tenants", {
   id: id(),
   name: text("name").notNull(),
   slug: text("slug").notNull().unique(),
+  // Data-governance switches. Both default OFF: a tenant must opt in before any AI processing happens,
+  // and separately before any content may leave our boundary to an external model provider.
+  aiExtractionEnabled: boolean("ai_extraction_enabled").notNull().default(false),
+  externalLlmEnabled: boolean("external_llm_enabled").notNull().default(false),
   createdAt: createdAt(),
 });
 
@@ -296,4 +304,92 @@ export const jobs = pgTable(
     updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow(),
   },
   (t) => [index("jobs_claim").on(t.status, t.runAfter), index("jobs_tenant").on(t.tenantId, t.createdAt)],
+);
+
+/** One execution of an agent for one job: provenance for every proposal it produced. Written only by the worker's functions. */
+export const agentRuns = pgTable(
+  "agent_runs",
+  {
+    id: id(),
+    tenantId: tenantId().references(() => tenants.id),
+    jobId: uuid("job_id").notNull().references(() => jobs.id),
+    agentName: text("agent_name").notNull(),
+    agentVersion: text("agent_version").notNull(),
+    event: text("event").notNull(),
+    fileId: uuid("file_id"),
+    status: runStatusEnum("status").notNull(),
+    detail: text("detail").notNull().default(""),
+    model: text("model"),
+    promptVersion: text("prompt_version"),
+    llmCalls: integer("llm_calls").notNull().default(0),
+    durationMs: integer("duration_ms").notNull().default(0),
+    createdAt: createdAt(),
+  },
+  (t) => [
+    unique("agent_runs_tenant_id_id").on(t.tenantId, t.id),
+    // A retried job must not produce a second set of results.
+    unique("agent_runs_job_agent").on(t.jobId, t.agentName),
+    foreignKey({ columns: [t.tenantId, t.fileId], foreignColumns: [files.tenantId, files.id], name: "agent_runs_file_fk" }),
+    index("agent_runs_file").on(t.tenantId, t.fileId),
+  ],
+);
+
+/**
+ * Something an AI agent suggests. It NEVER changes business data by itself: a human accepts or rejects it,
+ * and that decision is final (enforced by a trigger). Only the worker's SECURITY DEFINER function can insert.
+ */
+export const proposals = pgTable(
+  "proposals",
+  {
+    id: id(),
+    tenantId: tenantId().references(() => tenants.id),
+    runId: uuid("run_id").notNull(),
+    fileId: uuid("file_id").notNull(),
+    requestId: uuid("request_id").notNull(),
+    itemId: uuid("item_id").notNull(),
+    kind: proposalKindEnum("kind").notNull(),
+    schemaKey: text("schema_key"),
+    title: text("title").notNull(),
+    detail: text("detail").notNull().default(""),
+    payload: jsonb("payload").notNull(),
+    confidence: numeric("confidence", { precision: 4, scale: 3 }).notNull(),
+    severity: severityEnum("severity"),
+    status: proposalStatusEnum("status").notNull().default("pending"),
+    decidedBy: uuid("decided_by"),
+    decidedAt: timestamp("decided_at", { withTimezone: true }),
+    decisionNote: text("decision_note"),
+    createdAt: createdAt(),
+  },
+  (t) => [
+    unique("proposals_tenant_id_id").on(t.tenantId, t.id),
+    foreignKey({ columns: [t.tenantId, t.runId], foreignColumns: [agentRuns.tenantId, agentRuns.id], name: "proposals_run_fk" }),
+    foreignKey({ columns: [t.tenantId, t.fileId], foreignColumns: [files.tenantId, files.id], name: "proposals_file_fk" }),
+    foreignKey({ columns: [t.tenantId, t.requestId], foreignColumns: [requests.tenantId, requests.id], name: "proposals_request_fk" }),
+    foreignKey({ columns: [t.tenantId, t.itemId], foreignColumns: [requestItems.tenantId, requestItems.id], name: "proposals_item_fk" }),
+    foreignKey({ columns: [t.tenantId, t.decidedBy], foreignColumns: [users.tenantId, users.id], name: "proposals_decider_fk" }),
+    check("proposals_confidence_range", sql`${t.confidence} >= 0 AND ${t.confidence} <= 1`),
+    index("proposals_queue").on(t.tenantId, t.status, t.createdAt),
+    index("proposals_file").on(t.tenantId, t.fileId),
+    index("proposals_request").on(t.tenantId, t.requestId),
+  ],
+);
+
+/** Standardized rows an extraction proposal would produce, each traceable to its source cell. */
+export const extractedRows = pgTable(
+  "extracted_rows",
+  {
+    id: id(),
+    tenantId: tenantId().references(() => tenants.id),
+    proposalId: uuid("proposal_id").notNull(),
+    position: integer("position").notNull(),
+    sheet: text("sheet").notNull(),
+    sourceRow: integer("source_row").notNull(),
+    values: jsonb("values").notNull(),
+    cells: jsonb("cells").notNull(),
+    issues: jsonb("issues").notNull().default(sql`'[]'::jsonb`),
+  },
+  (t) => [
+    foreignKey({ columns: [t.tenantId, t.proposalId], foreignColumns: [proposals.tenantId, proposals.id], name: "extracted_rows_proposal_fk" }),
+    index("extracted_rows_proposal").on(t.tenantId, t.proposalId, t.position),
+  ],
 );

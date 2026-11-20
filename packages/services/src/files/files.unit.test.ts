@@ -8,7 +8,7 @@ import { zipSync, strToU8 } from "fflate";
 import { randomUUID } from "node:crypto";
 import { validateUpload, sanitizeFileName, MAX_FILE_BYTES } from "./validate";
 import { ClamdScanner, EicarScanner, ScanUnavailableError, buildScanner } from "./scanner";
-import { LocalStorage, MemoryStorage, storageKey } from "./storage";
+import { LocalStorage, MemoryStorage, storageKey, resolveStorageDir, findRepoRoot } from "./storage";
 import { previewSpreadsheet, PREVIEW_MAX_ROWS } from "./preview";
 import { makeSeedWorkbook } from "../seed-files";
 
@@ -192,5 +192,15 @@ describe("demo workbook generator", () => {
       expect(gap, name).toBe(name === "NWF – EUR" ? 12_450 : 0);
       for (const row of p.rows.slice(1, -1)) expect(Number(row[2]) >= 0 && Number(row[3]) >= 0).toBe(true);
     }
+  });
+});
+
+describe("resolveStorageDir", () => {
+  it("resolves a relative STORAGE_DIR against the repo root, so every process agrees", () => {
+    const root = findRepoRoot();
+    expect(path.basename(root)).not.toBe("services");
+    expect(resolveStorageDir({ STORAGE_DIR: ".storage" })).toBe(path.join(root, ".storage"));
+    expect(resolveStorageDir({})).toBe(path.join(root, ".storage"));
+    expect(resolveStorageDir({ STORAGE_DIR: "/var/data/tax" })).toBe("/var/data/tax");
   });
 });

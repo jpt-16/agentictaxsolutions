@@ -1,8 +1,10 @@
 import { describe, expect, it } from "vitest";
+import { readFileSync } from "node:fs";
+import { resolve } from "node:path";
 import {
   assertCan, assertCanClose, assertCanPublish, assertItemTransition, canViewRequest, can, daysUntil,
   deriveRequestStatus, isOverdue, violatesSegregationOfDuties, createRequestSchema, reviewItemSchema,
-  ForbiddenError, InvalidTransitionError, type Actor,
+  ForbiddenError, InvalidTransitionError, type Actor, extractionPayloadSchema, decideProposalSchema, confidenceBand,
 } from "./index";
 
 const actor = (over: Partial<Actor> = {}): Actor => ({
@@ -105,5 +107,35 @@ describe("input validation", () => {
   it("requires a rationale when requesting changes", () => {
     expect(reviewItemSchema.safeParse({ decision: "changes_requested", rationale: "" }).success).toBe(false);
     expect(reviewItemSchema.safeParse({ decision: "approved" }).success).toBe(true);
+  });
+});
+
+describe("AI proposals", () => {
+  it("only reviewers/managers can decide; contributors never see proposals; auditors can read but not decide", () => {
+    for (const r of ["tax_manager", "tax_reviewer"] as const) { expect(can(r, "proposal.read")).toBe(true); expect(can(r, "proposal.review")).toBe(true); }
+    for (const r of ["auditor", "tenant_admin"] as const) { expect(can(r, "proposal.read")).toBe(true); expect(can(r, "proposal.review")).toBe(false); }
+    expect(can("contributor", "proposal.read")).toBe(false);
+    expect(can("contributor", "proposal.review")).toBe(false);
+  });
+
+  it("parses the golden payload produced by the Python agent (contract parity)", () => {
+    const golden = JSON.parse(readFileSync(resolve(__dirname, "../../../schemas/fixtures/extraction_proposal.json"), "utf8"));
+    const payload = extractionPayloadSchema.parse(golden.proposal.payload);
+    expect(payload.stats.row_count).toBe(6);
+    expect(payload.columns.debit).toEqual({ letter: "C", header: "Debit" });
+    expect(golden.first_row.cells.debit).toBe("C4");
+  });
+
+  it("rejects payloads that drift from the contract", () => {
+    const golden = JSON.parse(readFileSync(resolve(__dirname, "../../../schemas/fixtures/extraction_proposal.json"), "utf8"));
+    expect(extractionPayloadSchema.safeParse({ ...golden.proposal.payload, method: "magic" }).success).toBe(false);
+    expect(extractionPayloadSchema.safeParse({ ...golden.proposal.payload, stats: { row_count: 1 } }).success).toBe(false);
+  });
+
+  it("requires a reason to reject, and bands confidence for display only", () => {
+    expect(decideProposalSchema.safeParse({ decision: "rejected", note: "" }).success).toBe(false);
+    expect(decideProposalSchema.safeParse({ decision: "rejected", note: "Wrong mapping" }).success).toBe(true);
+    expect(decideProposalSchema.safeParse({ decision: "accepted" }).success).toBe(true);
+    expect([0.95, 0.8, 0.5].map(confidenceBand)).toEqual(["high", "medium", "low"]);
   });
 });

@@ -3,8 +3,8 @@
 An enterprise platform where tax teams request data from departments and subsidiaries, collect it, and (in later
 phases) have AI agents standardize and validate it, with human review and a tamper-evident audit trail.
 
-> **Status: Phases 0–2.** The workflow core and secure file handling (upload, malware scanning, versioning, viewer,
-> job queue) are built and tested. The AI agents are Phases 3–4. **All data is fictional. Do not connect real corporate data.**
+> **Status: Phases 0–3.** Workflow core, secure file handling, and the first AI agent (trial-balance extraction with
+> human review) are built and tested. The validation agent is Phase 4. **All data is fictional. Do not connect real corporate data.**
 
 ## What works today
 
@@ -59,11 +59,15 @@ node scripts/e2e-smoke.cjs         # full UI workflow incl. uploads; needs `pnpm
 cd services/agent-worker && pip install -e ".[dev]" && pytest   # worker tests need the Postgres test DB (run `pnpm test` first)
 ```
 
-Run the queue worker (it idles until agents are registered in Phase 3):
+Process uploaded files with the AI worker (drains the queue and exits; omit `--once` to keep it running):
 
 ```bash
-cd services/agent-worker && WORKER_DATABASE_URL=postgres://taxops_worker:taxops_worker@localhost:5433/taxops python -m taxops_agents
+cd services/agent-worker && pip install -e . && cd ../.. && pnpm worker:once
 ```
+
+The worker reads the repo `.env`. With no `GEMINI_API_KEY`, or while a tenant has external LLM off (the default), extraction
+uses deterministic header matching only and no content leaves the system. To allow the model for a tenant:
+`pnpm tenant:flags northwind --external-llm on`.
 
 The database tests run against a separate `taxops_test` database that they reset on every run.
 

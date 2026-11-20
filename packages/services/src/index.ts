@@ -10,3 +10,4 @@ export * from "./files/scanner";
 export * from "./files/validate";
 export * from "./files/preview";
 export type { StoredFile } from "./files/types";
+export * from "./proposals";

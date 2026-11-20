@@ -1,11 +1,11 @@
 "use client";
 import Link from "next/link";
 import { usePathname } from "next/navigation";
-import { LayoutDashboard, FileText, History, Building2, type LucideIcon } from "lucide-react";
+import { LayoutDashboard, FileText, History, Building2, Bot, type LucideIcon } from "lucide-react";
 import { cn } from "./ui";
 
-const ICONS: Record<string, LucideIcon> = { dashboard: LayoutDashboard, requests: FileText, audit: History, directory: Building2 };
-export interface NavItem { href: string; label: string; icon: keyof typeof ICONS }
+const ICONS: Record<string, LucideIcon> = { dashboard: LayoutDashboard, requests: FileText, review: Bot, audit: History, directory: Building2 };
+export interface NavItem { href: string; label: string; icon: keyof typeof ICONS; badge?: number }
 
 export function SidebarNav({ items }: { items: NavItem[] }) {
   const pathname = usePathname();
@@ -19,7 +19,8 @@ export function SidebarNav({ items }: { items: NavItem[] }) {
             className={cn("flex items-center gap-2.5 rounded-lg px-3 py-2 text-[13.5px] font-medium transition-colors",
               active ? "bg-accentsoft text-accent" : "text-muted hover:bg-surface2 hover:text-ink")}>
             <Icon size={17} aria-hidden />
-            {item.label}
+            <span className="flex-1">{item.label}</span>
+            {item.badge ? <span aria-label={`${item.badge} awaiting review`} className="tnum rounded-full px-1.5 text-[11px] font-semibold" style={{ background: "var(--violet-bg)", color: "var(--violet-fg)" }}>{item.badge}</span> : null}
           </Link>
         );
       })}

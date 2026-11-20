@@ -1,4 +1,5 @@
 import { mkdir, readFile, rm, writeFile } from "node:fs/promises";
+import { existsSync } from "node:fs";
 import path from "node:path";
 
 /** Object storage seam. Dev uses local disk; production swaps in S3/GCS with KMS encryption and presigned URLs. */
@@ -53,4 +54,25 @@ export class MemoryStorage implements FileStorage {
   async delete(key: string) {
     this.objects.delete(key);
   }
+}
+
+/** Walks up from `from` to the monorepo root (the folder holding pnpm-workspace.yaml). */
+export function findRepoRoot(from: string = process.cwd()): string {
+  let dir = path.resolve(from);
+  for (;;) {
+    if (existsSync(path.join(dir, "pnpm-workspace.yaml"))) return dir;
+    const parent = path.dirname(dir);
+    if (parent === dir) return path.resolve(from);
+    dir = parent;
+  }
+}
+
+/**
+ * One storage location for every process (web, seed CLI, Python worker). A relative STORAGE_DIR is resolved against the
+ * repo root, NOT the process's working directory, which differs between them.
+ */
+export function resolveStorageDir(env: Record<string, string | undefined> = process.env): string {
+  const configured = env.STORAGE_DIR?.trim();
+  if (!configured) return path.join(findRepoRoot(), ".storage");
+  return path.isAbsolute(configured) ? configured : path.resolve(findRepoRoot(), configured);
 }

@@ -20,9 +20,11 @@ import psycopg
 from psycopg.rows import dict_row
 from pydantic import BaseModel, ValidationError
 
-from .contract import Agent, AgentSpec, RunContext
-from .llm import LLMGateway
+from .contract import Agent, AgentResult, AgentSpec, RunContext
+from .llm import LLMGateway, NullGateway
 from .registry import AgentRegistry
+from .storage import BlobStorage
+from .store import JobFiles, save_results
 
 log = logging.getLogger("taxops.worker")
 
@@ -56,6 +58,7 @@ class Worker:
         lease_seconds: int = 600,
         retry_seconds: int = 30,
         batch_size: int = 5,
+        storage: BlobStorage | None = None,
     ) -> None:
         self.conninfo = conninfo
         self.registry = registry
@@ -65,6 +68,7 @@ class Worker:
         self.lease_seconds = lease_seconds
         self.retry_seconds = retry_seconds
         self.batch_size = batch_size
+        self.storage = storage
 
     # -- queue primitives -------------------------------------------------------------------------------
     def claim(self, conn: psycopg.Connection) -> list[Job]:
@@ -88,8 +92,9 @@ class Worker:
         """Runs every agent registered for the job's event. Returns True if the job succeeded."""
         agents = self.registry.for_event(job.type)
         try:
+            files = JobFiles(conn, job.id, self.worker_id, self.storage) if self.storage and "fileId" in job.payload else None
             for agent_cls in agents:
-                self._run_agent(agent_cls, job)
+                self._run_agent(conn, agent_cls, job, files)
         except ValidationError:
             self._fail(conn, job, "ValidationError: payload does not match the event contract")
             return False
@@ -100,10 +105,16 @@ class Worker:
         self._complete(conn, job)
         return True
 
-    def _run_agent(self, agent_cls: type[Agent], job: Job) -> None:
+    def _run_agent(self, conn: psycopg.Connection, agent_cls: type[Agent], job: Job, files: JobFiles | None) -> None:
         payload = agent_cls.input_model.model_validate(job.payload)
-        ctx = RunContext(tenant_id=job.tenant_id, run_id=uuid4(), triggered_by_event=job.type, llm=self.gateway)
+        meta = files.meta() if files else None
+        # Content only reaches an external model if the TENANT has opted in; otherwise the agent gets a gateway that refuses.
+        allow = bool(meta and meta.external_llm_enabled)
+        llm = self.gateway if allow or files is None else NullGateway("This tenant has not allowed external LLM processing.")
+        ctx = RunContext(tenant_id=job.tenant_id, run_id=uuid4(), triggered_by_event=job.type, llm=llm, files=files, allow_external_llm=allow or files is None)
         output = agent_cls().run(ctx, payload)
+        if isinstance(output, AgentResult) and files is not None:
+            save_results(conn, job.id, self.worker_id, agent_cls.spec, output)  # atomic + idempotent per (job, agent)
         self.on_output(job, agent_cls.spec, output)
 
     def run_once(self) -> int:

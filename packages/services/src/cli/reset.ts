@@ -1,12 +1,11 @@
 import { appUrl, connect, ownerUrl } from "@taxops/db";
 import { resetDevDatabase } from "../reset-db";
-import path from "node:path";
 import { rm } from "node:fs/promises";
 import { seedDemo } from "../seed";
 import { EicarScanner } from "../files/scanner";
-import { LocalStorage } from "../files/storage";
+import { LocalStorage, resolveStorageDir } from "../files/storage";
 
-const storageDir = process.env.STORAGE_DIR ?? path.resolve(process.cwd(), "../../.storage");
+const storageDir = resolveStorageDir();
 await resetDevDatabase(ownerUrl());
 await rm(storageDir, { recursive: true, force: true }); // blobs from the wiped database would be orphans
 const owner = connect(ownerUrl(), { max: 2 });

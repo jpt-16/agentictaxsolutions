@@ -55,3 +55,18 @@ export async function createTestTenant(owner: Connection, label = "t"): Promise<
 }
 
 export const TEST_WORKER_URL = process.env.TEST_WORKER_DATABASE_URL ?? "postgres://taxops_worker:taxops_worker@localhost:5433/taxops_test";
+
+export interface FileFixture { requestId: string; itemId: string; submissionId: string; fileId: string; storageKey: string }
+
+/** Inserts request → item → submission → file for a tenant (owner connection) so agent tests have something to point at. */
+export async function createFileFixture(owner: Connection, t: TestTenant, name = "tb.xlsx"): Promise<FileFixture> {
+  const requestId = randomUUID(), itemId = randomUUID(), submissionId = randomUUID(), fileId = randomUUID();
+  const storageKey = `${t.tenantId}/${fileId}`;
+  await withTenant(owner.db, { tenantId: t.tenantId }, async (tx) => {
+    await tx.insert(s.requests).values({ id: requestId, tenantId: t.tenantId, reference: `AG-${requestId.slice(0, 6)}`, title: "Agent fixture", taxYear: 2025, dueDate: "2026-12-31", status: "open", createdBy: t.users.manager });
+    await tx.insert(s.requestItems).values({ id: itemId, tenantId: t.tenantId, requestId, position: 1, title: "Trial balance", dataType: "trial_balance", status: "submitted" });
+    await tx.insert(s.submissions).values({ id: submissionId, tenantId: t.tenantId, itemId, version: 1, submittedBy: t.users.contributor, note: "fixture" });
+    await tx.insert(s.files).values({ id: fileId, tenantId: t.tenantId, submissionId, originalName: name, contentType: "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet", sizeBytes: 100, sha256: "c".repeat(64), storageKey, scanner: "test", scannedAt: new Date(), uploadedBy: t.users.contributor });
+  });
+  return { requestId, itemId, submissionId, fileId, storageKey };
+}

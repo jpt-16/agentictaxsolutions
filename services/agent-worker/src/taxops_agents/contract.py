@@ -9,7 +9,7 @@ Design rules (see docs/architecture.md):
 from __future__ import annotations
 
 from abc import ABC, abstractmethod
-from typing import Any, ClassVar, Generic, Literal, TypeVar
+from typing import Any, ClassVar, Generic, Literal, Protocol, TypeVar, runtime_checkable
 from uuid import UUID
 
 from pydantic import BaseModel, ConfigDict, Field
@@ -45,6 +45,37 @@ class Proposal(BaseModel):
     evidence: list[Evidence] = Field(default_factory=list)
 
 
+class FileMeta(BaseModel):
+    """What the platform tells an agent about a file. Comes from the DB function bound to the job being worked."""
+
+    model_config = ConfigDict(frozen=True)
+    tenant_id: UUID
+    file_id: UUID
+    request_id: UUID
+    item_id: UUID
+    submission_id: UUID
+    storage_key: str
+    sha256: str
+    original_name: str
+    content_type: str
+    size_bytes: int
+    ai_extraction_enabled: bool
+    external_llm_enabled: bool
+
+
+class FileBlob(BaseModel):
+    model_config = ConfigDict(frozen=True)
+    meta: FileMeta
+    data: bytes
+
+
+@runtime_checkable
+class FileAccess(Protocol):
+    """Job-scoped file access: an agent can only open the file its job refers to, and bytes are hash-verified."""
+
+    def open(self, file_id: UUID) -> FileBlob: ...
+
+
 class RunContext(BaseModel):
     """Everything an agent may know about the run. Always tenant-scoped."""
 
@@ -53,6 +84,37 @@ class RunContext(BaseModel):
     run_id: UUID
     triggered_by_event: str
     llm: LLMGateway
+    files: FileAccess | None = None
+    # False when the tenant has not allowed content to be sent to an external model provider.
+    allow_external_llm: bool = False
+
+
+class ExtractedRow(BaseModel):
+    """One standardized row, traceable to the exact source cells it came from."""
+
+    proposal_index: int
+    sheet: str
+    source_row: int
+    values: dict[str, Any]
+    cells: dict[str, str]
+    issues: list[str] = Field(default_factory=list)
+
+
+class RunMeta(BaseModel):
+    status: Literal["succeeded", "skipped", "failed"] = "succeeded"
+    detail: str = ""
+    model: str | None = None
+    prompt_version: str | None = None
+    llm_calls: int = 0
+    duration_ms: int = 0
+
+
+class AgentResult(BaseModel):
+    """The standard return type for agents whose output is persisted by the worker for human review."""
+
+    proposals: list[Proposal] = Field(default_factory=list)
+    rows: list[ExtractedRow] = Field(default_factory=list)
+    meta: RunMeta = Field(default_factory=RunMeta)
 
 
 class AgentSpec(BaseModel):

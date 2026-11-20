@@ -1,0 +1,86 @@
+{
+  "proposal": {
+    "kind": "extraction",
+    "title": "Trial balance – NWU – GBP",
+    "detail": "6 accounts read via header mapping.",
+    "confidence": 0.98,
+    "severity": "info",
+    "payload": {
+      "schema": "trial_balance",
+      "schema_version": "1",
+      "sheet": "NWU – GBP",
+      "method": "heuristic",
+      "header_row": 3,
+      "fields": [
+        {
+          "key": "account_code",
+          "label": "Account code"
+        },
+        {
+          "key": "account_name",
+          "label": "Account name"
+        },
+        {
+          "key": "debit",
+          "label": "Debit"
+        },
+        {
+          "key": "credit",
+          "label": "Credit"
+        }
+      ],
+      "columns": {
+        "account_code": {
+          "letter": "A",
+          "header": "Account"
+        },
+        "account_name": {
+          "letter": "B",
+          "header": "Description"
+        },
+        "debit": {
+          "letter": "C",
+          "header": "Debit"
+        },
+        "credit": {
+          "letter": "D",
+          "header": "Credit"
+        }
+      },
+      "stats": {
+        "row_count": 6,
+        "sum_debit": "2200",
+        "sum_credit": "2200",
+        "reported_total_debit": "2200",
+        "reported_total_credit": "2200",
+        "unparsed_cells": 0,
+        "rows_with_issues": 0
+      },
+      "metadata": {
+        "entity_hint": "NWU – GBP",
+        "currency": "GBP"
+      },
+      "notes": [],
+      "parse_rate": 1.0,
+      "file_id": "11111111-1111-4111-8111-111111111111"
+    }
+  },
+  "first_row": {
+    "proposal_index": 0,
+    "sheet": "NWU – GBP",
+    "source_row": 4,
+    "values": {
+      "account_code": "1000",
+      "account_name": "Cash",
+      "debit": "1000",
+      "credit": "0"
+    },
+    "cells": {
+      "account_code": "A4",
+      "account_name": "B4",
+      "debit": "C4",
+      "credit": "D4"
+    },
+    "issues": []
+  }
+}

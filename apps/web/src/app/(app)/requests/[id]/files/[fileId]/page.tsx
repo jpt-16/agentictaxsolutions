@@ -71,7 +71,7 @@ export default async function FilePreviewPage({ params, searchParams }: {
               </thead>
               <tbody>
                 {p.rows.map((row, r) => (
-                  <tr key={r} className={r === 0 ? "font-semibold" : undefined}>
+                  <tr key={r} id={`r${r + 1}`} className={cn("target-row", r === 0 && "font-semibold")}>
                     <th scope="row" className="tnum sticky left-0 border-b border-r border-line bg-surface2 px-2 py-1 text-right text-[11px] font-medium text-subtle">{r + 1}</th>
                     {header.map((_, c) => {
                       const v = row[c] ?? "";

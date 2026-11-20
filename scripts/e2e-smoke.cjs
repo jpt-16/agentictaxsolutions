@@ -3,6 +3,7 @@
  * Usage: node scripts/e2e-smoke.cjs */
 const { chromium } = require("playwright");
 const path = require("node:path");
+const { execSync } = require("node:child_process");
 // exceljs lives in the services package; resolve it from there so this script needs no extra install.
 const ExcelJS = require(require.resolve("exceljs", { paths: [path.join(__dirname, "../packages/services")] }));
 const assert = require("node:assert/strict");
@@ -104,10 +105,49 @@ const BASE = process.env.BASE_URL ?? "http://localhost:3000";
   assert.equal(dl.headers()["x-content-type-options"], "nosniff");
   assert.match(dl.headers()["content-security-policy"], /sandbox/);
   step("download is an attachment with nosniff + sandbox CSP");
-  await item(ITEM2).locator("textarea").fill("No disposals this year; confirmed with fixed assets.");
+  const tbWorkbook = async () => {
+    const wb = new ExcelJS.Workbook();
+    const ws = wb.addWorksheet("Ledger TB");
+    ws.addRow(["Account", "Description", "Debit", "Credit"]);
+    ws.addRow(["1000", "Cash", 1000, 0]); ws.addRow(["2000", "Payables", 0, 600]); ws.addRow(["3000", "Equity", 0, 350]);
+    return Buffer.from(await wb.xlsx.writeBuffer());
+  };
+  await item(ITEM2).locator("textarea").fill("No disposals this year; trial balance for the disposal entity attached.");
+  await item(ITEM2).locator('input[type="file"]').setInputFiles({ name: "Disposal_Entity_TB.xlsx", mimeType: XLSX_MIME, buffer: await tbWorkbook() });
   await btn(ITEM2, "Submit").click();
-  await item(ITEM2).getByText("No disposals this year").waitFor();
+  await item(ITEM2).getByText("Disposal_Entity_TB.xlsx").waitFor();
   await logout();
+
+  // The AI worker processes the queue. Contributors never see AI output.
+  const WORKER = process.env.WORKER_CMD ?? "python3 -m taxops_agents --once";
+  execSync(WORKER, { cwd: path.join(__dirname, "../services/agent-worker"), stdio: "pipe", env: process.env });
+  await login("Sam Whitfield");
+  assert.equal((await page.goto(`${BASE}/review`)).status(), 404);
+  await page.goto(requestUrl);
+  assert.doesNotMatch(await item(ITEM2).innerText(), /AI result|AI queued/);
+  step("worker processed the upload; contributors see no AI information and /review is 404");
+  await logout();
+
+  // A reviewer checks the AI result against the source, then accepts it
+  await login("Naomi Clarke");
+  await page.goto(`${BASE}/review`);
+  await page.getByRole("link", { name: "Trial balance – Ledger TB" }).first().click();
+  await page.waitForSelector("text=Column mapping");
+  assert.match(await page.locator("body").innerText(), /AI-generated/);
+  assert.match(await page.locator("body").innerText(), /Debits and credits differ/);
+  await page.getByRole("cell", { name: "Column C" }).waitFor();
+  await page.getByRole("link", { name: "Row 2" }).waitFor(); // lineage link into the file viewer
+  await page.getByRole("button", { name: "Reject…" }).click();
+  assert.equal(await page.getByRole("button", { name: "Enter a reason to reject" }).isDisabled(), true);
+  step("review page shows mapping, totals gap and lineage; rejecting needs a reason");
+  await page.getByRole("button", { name: "Accept as correctly read" }).click();
+  await page.waitForSelector("text=Accepted");
+  await page.goto(requestUrl);
+  await item(ITEM2).getByText("AI result accepted").waitFor();
+  step("reviewer accepted the AI result; the request page reflects it");
+  await logout();
+
+
 
   // Access control on files: unassigned contributor and anonymous callers get nothing
   await login("Hiro Tanaka");
@@ -162,7 +202,7 @@ const BASE = process.env.BASE_URL ?? "http://localhost:3000";
   await page.goto(`${BASE}/audit?verify=1`);
   await page.waitForSelector("text=Chain intact");
   const audit = await page.locator("body").innerText();
-  for (const a of ["request.created", "request.published", "item.submitted", "item.changes_requested", "item.approved", "request.closed", "file.rejected", "file.viewed", "file.downloaded"]) {
+  for (const a of ["request.created", "request.published", "item.submitted", "item.changes_requested", "item.approved", "request.closed", "file.rejected", "file.viewed", "file.downloaded", "proposal.created", "proposal.accepted"]) {
     assert.ok(audit.includes(a), `audit log should include ${a}`);
   }
   step("auditor sees the full trail and the hash chain verifies");

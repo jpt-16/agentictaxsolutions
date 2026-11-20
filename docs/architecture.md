@@ -56,6 +56,16 @@ failing model never blocks a user request.
 - Downloads are `attachment` with `nosniff` and a `sandbox` CSP, `no-store`. The upload endpoint is same-origin-checked (CSRF) and size-capped.
 - The viewer is read-only: formulas show cached values and are never evaluated; capped at 200 rows x 30 columns.
 
+**AI agents (Phase 3)**
+- **The worker's only door into the data is two SECURITY DEFINER functions**, both bound to the job it currently holds: `agent_get_file` (reads that job's file and the tenant's governance flags) and `agent_save_results` (writes run + proposals + rows + audit atomically). The tenant, file, request and item all come from the job, never from the caller; a crafted payload pointing at another tenant's file returns nothing. Saving is idempotent per (job, agent), so retries never duplicate output.
+- **Proposals are not data.** Only the worker functions can create them; the app role can change just four decision columns, and a trigger allows exactly one transition (pending → accepted/rejected, with decider and time; a reason is required to reject). Decisions are final. A re-run supersedes earlier *pending* output for the same sheet and never touches decided proposals.
+- **Two tenant switches, both default OFF:** `ai_extraction_enabled` (agent runs at all; otherwise a recorded "skipped" run) and `external_llm_enabled` (content may be sent to a model provider; otherwise the agent gets a gateway that refuses and uses deterministic matching). Operators set them with `pnpm tenant:flags`.
+- **Code calculates, the model maps.** Header matching is deterministic and runs first; the model is consulted only when that is unsure *and* the tenant allows it. Whatever the model returns is **verified against the actual cells** (real columns, >=80% of amounts parse, rows labelled) or discarded. Amounts are parsed by code into exact decimals (strings end-to-end, never floats), including European formats, parentheses and trailing minus. A sheet's own total row is compared with the rows read, to expose missed rows.
+- Prompts treat sheet text as fenced, untrusted data; the gateway redacts SSN/EIN/IBAN/card/email patterns; prompt version, model and call count are recorded per run.
+- Confidence = 0.45 x header-match quality + 0.45 x amount parse rate + 0.10 x sample size (model answers capped at 0.9). It orders attention; it never auto-accepts anything.
+- Every proposal row carries its source sheet/row/cell, linking into the file viewer. The proposal payload is validated in TypeScript against a golden sample (`schemas/fixtures/extraction_proposal.json`) that the Python tests also pin.
+- Accepting means "this was read faithfully from the file". It does **not** mean the figures are correct; that is the validation agent's job (Phase 4).
+
 **Application**
 - Security headers (CSP `frame-ancestors`, HSTS, nosniff, etc.), `poweredByHeader` off, server actions have Next's built-in origin checks.
 - Domain errors are mapped to safe messages; unknown errors are logged, never returned.
@@ -79,7 +89,7 @@ failing model never blocks a user request.
 | 0 | Monorepo, design system, tenancy/RLS, audit primitive, fictional seed, agent contract | Done |
 | 1 | Dashboard, requests, assignments, deadlines, review workflow, audit UI | Done |
 | 2 | File upload (versioning, malware scan, authorized downloads), Excel viewer, `jobs` queue + worker loop | Done |
-| 3 | Extraction agent (Python + Gemini), canonical schemas, proposal review UI | Next |
+| 3 | Extraction agent (Python + Gemini), canonical schema, proposal review UI | Done (trial balance only) |
 | 4 | Validation agent (deterministic rules + LLM explanations), finding triage, approval | |
 | 5 | Hardening: permission/isolation suites, audit export, observability, notifications, SSO | |
 
@@ -98,3 +108,9 @@ failing model never blocks a user request.
 - Uploads are scanned and stored **synchronously** inside the request and buffered in memory (bounded by the limits above). Spreadsheet previews parse in-process. Move both to the worker with streaming if volumes or abuse require it.
 - Files are immutable by design (no delete/replace); a retention and legal-hold policy still needs to be defined.
 - Uploading is optional per submission (note-only is allowed); requiring a file per item type is a product decision for later.
+- **Extraction covers trial balances only** (English and a few German header synonyms). Other workbook types get an honest "no data extracted" result. More canonical schemas (fixed assets, intercompany, transfer pricing) are straightforward additions to the agent.
+- **No mapping-correction UI yet.** A reviewer can reject with a reason, but cannot adjust the column mapping and re-extract in place, and there is no "re-run" button (a re-run supersedes pending output; trigger it by re-enqueuing the job).
+- **Accepted proposals do not feed anything downstream yet.** They are the reviewed source for Phase 4's validation.
+- **The model path has never run against the live Gemini API** (no key here): it is covered with a fake gateway, including hallucinated columns, prompt-injection text and redaction. Verify before relying on it.
+- Tenant AI switches have a CLI but no admin UI. The review queue lists proposals individually (no grouping by file yet).
+- The Python worker reads blobs from the same storage directory as the web app (local disk in dev). Production needs an S3/GCS reader behind `BlobStorage`.
