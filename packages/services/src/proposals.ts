@@ -1,6 +1,6 @@
 import { and, asc, desc, eq, inArray, ne, sql, type SQL } from "drizzle-orm";
 import {
-  assertCan, can, decideProposalSchema, extractionPayloadSchema, findingPayloadSchema, InvalidTransitionError,
+  assertCan, can, decideProposalSchema, extractionPayloadSchema, findingPayloadSchema, InvalidTransitionError, remapSchema,
   type ExtractionPayload, type FindingPayload, type ProposalStatus,
 } from "@taxops/core";
 import {
@@ -171,9 +171,9 @@ export async function extractionByFile(tx: Tx, ctx: ServiceContext, fileIds: str
   const out = new Map<string, FileExtraction>();
   if (fileIds.length === 0) return out;
   const props = await tx.select({ id: proposals.id, fileId: proposals.fileId, status: proposals.status }).from(proposals)
-    .where(and(inArray(proposals.fileId, fileIds), ne(proposals.status, "superseded"))).orderBy(asc(proposals.createdAt));
+    .where(and(inArray(proposals.fileId, fileIds), eq(proposals.kind, "extraction"), ne(proposals.status, "superseded"))).orderBy(asc(proposals.createdAt));
   const runs = await tx.select({ fileId: agentRuns.fileId, status: agentRuns.status, detail: agentRuns.detail }).from(agentRuns)
-    .where(inArray(agentRuns.fileId, fileIds)).orderBy(desc(agentRuns.createdAt));
+    .where(and(inArray(agentRuns.fileId, fileIds), inArray(agentRuns.agentName, ["extraction", "extraction_remap"]))).orderBy(desc(agentRuns.createdAt));
   for (const id of fileIds) {
     const mine = props.filter((p) => p.fileId === id);
     const c = { pending: mine.filter((p) => p.status === "pending").length, accepted: mine.filter((p) => p.status === "accepted").length, rejected: mine.filter((p) => p.status === "rejected").length };
@@ -186,4 +186,61 @@ export async function extractionByFile(tx: Tx, ctx: ServiceContext, fileIds: str
     out.set(id, !run ? { state: "queued", ...c } : { state: run.status === "skipped" ? "skipped" : run.status === "failed" ? "failed" : "none", ...c, detail: run.detail });
   }
   return out;
+}
+
+
+/**
+ * A reviewer corrected the column mapping of a PENDING extraction: queue a deterministic re-extraction of that sheet.
+ * The worker verifies the mapping against the data and supersedes the pending proposal; nothing is applied here.
+ */
+export async function requestRemap(ctx: ServiceContext, proposalId: string, rawInput: unknown) {
+  assertCan(ctx.session.role, "proposal.review");
+  const input = remapSchema.parse(rawInput);
+  return scoped(ctx, async (tx) => {
+    const [p] = await tx.select().from(proposals).where(eq(proposals.id, proposalId));
+    if (!p || p.kind !== "extraction") throw new NotFoundError("Proposal");
+    if (p.status !== "pending") throw new InvalidTransitionError("Only a result that is still awaiting review can be re-extracted.");
+    const payload = extractionPayloadSchema.safeParse(p.payload);
+    if (!payload.success) throw new InvalidTransitionError("This result is not in a readable format.");
+    const [file] = await tx.select({ name: files.originalName, submissionId: files.submissionId }).from(files).where(eq(files.id, p.fileId));
+    const kind = /\.csv$/i.test(file!.name) ? "csv" : "xlsx";
+    const columns = Object.fromEntries(Object.entries(input.columns).map(([k, v]) => [k, v.toUpperCase()]));
+    await tx.insert(jobs).values({
+      tenantId: ctx.session.tenantId, type: "extraction.remap",
+      payload: { fileId: p.fileId, submissionId: file!.submissionId, itemId: p.itemId, requestId: p.requestId, kind, sheet: payload.data.sheet, headerRow: input.headerRow, columns, requestedBy: ctx.session.userId },
+    });
+    await recordAudit(tx, {
+      tenantId: ctx.session.tenantId, actor: auditActorOf(ctx), action: "proposal.remap_requested", entityType: "proposal", entityId: p.id, requestRef: p.requestId,
+      summary: `Corrected the column mapping of "${p.title}" and requested re-extraction`,
+      before: { headerRow: payload.data.header_row, columns: payload.data.columns }, after: { headerRow: input.headerRow, columns },
+    });
+  });
+}
+
+/** Queue extraction again for a file (e.g. after the worker was down, or a failed run). Supersedes pending output for each sheet. */
+export async function reprocessFile(ctx: ServiceContext, fileId: string) {
+  assertCan(ctx.session.role, "proposal.review");
+  return scoped(ctx, async (tx) => {
+    const [f] = await tx.select({ id: files.id, name: files.originalName, submissionId: files.submissionId }).from(files).where(eq(files.id, fileId));
+    if (!f) throw new NotFoundError("File");
+    const [sub] = await tx.select({ itemId: submissions.itemId }).from(submissions).where(eq(submissions.id, f.submissionId));
+    const [item] = await tx.select({ requestId: requestItems.requestId }).from(requestItems).where(eq(requestItems.id, sub!.itemId));
+    const ext = (f.name.split(".").pop() ?? "").toLowerCase();
+    if (ext !== "xlsx" && ext !== "csv") throw new InvalidTransitionError("Only spreadsheets can be processed.");
+    await tx.insert(jobs).values({
+      tenantId: ctx.session.tenantId, type: "file.uploaded",
+      payload: { fileId: f.id, submissionId: f.submissionId, itemId: sub!.itemId, requestId: item!.requestId, kind: ext },
+    });
+    await recordAudit(tx, {
+      tenantId: ctx.session.tenantId, actor: auditActorOf(ctx), action: "file.reprocess_requested", entityType: "file", entityId: f.id, requestRef: item!.requestId,
+      summary: `Requested AI processing again for "${f.name}"`, after: { fileId: f.id },
+    });
+  });
+}
+
+/** Whether AI work is queued or running for a file (so the UI can say "in progress" instead of looking stuck). */
+export async function pendingWorkForFile(ctx: ServiceContext, fileId: string): Promise<number> {
+  if (!can(ctx.session.role, "proposal.read")) return 0;
+  return scoped(ctx, async (tx) => (await tx.select({ n: sql<number>`count(*)::int` }).from(jobs)
+    .where(and(sql`${jobs.payload}->>'fileId' = ${fileId}`, inArray(jobs.status, ["queued", "running"]), inArray(jobs.type, ["file.uploaded", "extraction.remap"]))))[0]!.n);
 }

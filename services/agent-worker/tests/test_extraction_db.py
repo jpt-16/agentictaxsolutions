@@ -269,3 +269,24 @@ def test_a_balanced_trial_balance_validates_clean():
     vworker(env, ev).run_once()
     assert [f["rule_id"] for f in env.q("select rule_id from proposals where kind = 'finding'")] == []
     assert "no findings" in env.q("select detail from agent_runs where agent_name = 'validation' and file_id = %s", fid)[0]["detail"]
+
+
+def test_a_reviewer_remap_supersedes_the_pending_proposal_for_that_sheet():
+    from taxops_agents.agents.extraction import RemapAgent
+
+    env = Env()
+    fid, old = extract(env, make_xlsx({"S": UNBALANCED}))
+    ev = f"extraction.remap.{uuid4().hex[:6]}"
+    reg = AgentRegistry()
+    reg.register(type("TestRemap", (RemapAgent,), {"spec": RemapAgent.spec.model_copy(update={"triggers": (ev,)})}))
+    payload = {"fileId": fid, "submissionId": str(env.sub), "itemId": str(env.item), "requestId": str(env.request), "kind": "xlsx", "sheet": "S",
+               "headerRow": 1, "columns": {"account_code": "A", "account_name": "B", "debit": "C", "credit": "D"}, "requestedBy": str(env.user)}
+    with psycopg.connect(OWNER_URL) as c:
+        c.execute("select set_config('app.tenant_id', %s, true)", (str(env.tenant),))
+        c.execute("insert into jobs (tenant_id, type, payload, max_attempts) values (%s, %s, %s::jsonb, 2)", (env.tenant, ev, json.dumps(payload)))
+        c.commit()
+    Worker(WORKER_URL, reg, FakeGateway(), storage=env.storage, retry_seconds=0).run_once()
+    rows = {r["id"]: r for r in env.q("select id, status, payload from proposals where file_id = %s", fid)}
+    assert rows[uuid_of(old)]["status"] == "superseded"
+    new = next(r for r in rows.values() if r["status"] == "pending")
+    assert new["payload"]["method"] == "manual" and new["payload"]["stats"]["row_count"] == 5

@@ -44,6 +44,35 @@ def _looks_tabular(grid: Grid) -> bool:
     return len(grid.rows) >= 3 and width >= 3 and numbers >= 4
 
 
+def build_proposal(grid: Grid, m: Mapping, v: Verification, budget: int, index: int, file_id: Any, notes: list[str] | None = None) -> tuple[Proposal, list[ExtractedRow]] | None:
+    """Deterministic extraction + proposal for a chosen (and already verified) mapping. Shared by the automatic and manual paths."""
+    ex = extract_rows(grid, m, budget)
+    if not ex.rows:
+        return None
+    conf = confidence(m, v)
+    notes = [*m.notes, *(notes or []), *ex.notes]
+    hints = metadata_hints(grid, m.header_row)
+    n_issue_rows = ex.stats["rows_with_issues"]
+    warn = conf < 0.8 or n_issue_rows > 0 or ex.stats.get("totals_mismatch") or grid.truncated
+    if grid.truncated:
+        notes.append("The sheet is very large; only the first rows were read.")
+    header_cells = f"{col_letter(min(m.columns.values()))}{m.header_row}:{col_letter(max(m.columns.values()))}{m.header_row}"
+    how = {"llm": "AI-assisted", "manual": "reviewer-corrected"}.get(m.method, "header")
+    proposal = Proposal(
+        kind="extraction", title=f"Trial balance – {grid.name}",
+        detail=f"{ex.stats['row_count']} accounts read via {how} mapping" + (f"; {n_issue_rows} row(s) need a look" if n_issue_rows else "") + ".",
+        payload={
+            "schema": TRIAL_BALANCE.key, "schema_version": TRIAL_BALANCE.version, "sheet": grid.name, "method": m.method, "header_row": m.header_row,
+            "fields": [{"key": k, "label": next(f.label for f in TRIAL_BALANCE.fields if f.key == k)} for k in OUTPUT_FIELDS],
+            "columns": {f: {"letter": col_letter(i), "header": m.headers.get(f, "")} for f, i in m.columns.items()},
+            "stats": ex.stats, "metadata": hints, "notes": notes, "parse_rate": v.parse_rate, "file_id": str(file_id),
+        },
+        confidence=conf, severity="warning" if warn else "info",
+        evidence=[Evidence(sheet=grid.name, cell_range=header_cells, note="Header row used for column mapping")],
+    )
+    return proposal, [ExtractedRow(proposal_index=index, sheet=grid.name, **{k: r[k] for k in ("source_row", "values", "cells", "issues")}) for r in ex.rows]
+
+
 class ExtractionAgent(Agent[FileUploaded, AgentResult]):
     spec = AgentSpec(
         name="extraction", version=AGENT_VERSION,
@@ -138,30 +167,5 @@ class ExtractionAgent(Agent[FileUploaded, AgentResult]):
             return None, calls, int(ai_unavailable and _looks_tabular(grid))
 
         m, v = chosen
-        ex = extract_rows(grid, m, budget)
-        if not ex.rows:
-            return None, calls, 0
-        conf = confidence(m, v)
-        notes = [*m.notes, *notes, *ex.notes]
-        hints = metadata_hints(grid, m.header_row)
-        warn = conf < 0.8 or ex.stats["rows_with_issues"] > 0 or ex.stats.get("totals_mismatch") or grid.truncated
-        n_issue_rows = ex.stats["rows_with_issues"]
-        if grid.truncated:
-            notes.append("The sheet is very large; only the first rows were read.")
-        header_cells = f"{col_letter(min(m.columns.values()))}{m.header_row}:{col_letter(max(m.columns.values()))}{m.header_row}"
-        proposal = Proposal(
-            kind="extraction",
-            title=f"Trial balance – {grid.name}",
-            detail=(f"{ex.stats['row_count']} accounts read via {'AI-assisted' if m.method == 'llm' else 'header'} mapping"
-                    + (f"; {n_issue_rows} row(s) need a look" if n_issue_rows else "") + "."),
-            payload={
-                "schema": TRIAL_BALANCE.key, "schema_version": TRIAL_BALANCE.version, "sheet": grid.name,
-                "method": m.method, "header_row": m.header_row,
-                "fields": [{"key": k, "label": next(f.label for f in TRIAL_BALANCE.fields if f.key == k)} for k in OUTPUT_FIELDS],
-                "columns": {f: {"letter": col_letter(i), "header": m.headers.get(f, "")} for f, i in m.columns.items()},
-                "stats": ex.stats, "metadata": hints, "notes": notes, "parse_rate": v.parse_rate, "file_id": str(file_id),
-            },
-            confidence=conf, severity="warning" if warn else "info",
-            evidence=[Evidence(sheet=grid.name, cell_range=header_cells, note="Header row used for column mapping")],
-        )
-        return (proposal, [ExtractedRow(proposal_index=index, sheet=grid.name, **{k: r[k] for k in ("source_row", "values", "cells", "issues")}) for r in ex.rows]), calls, 0
+        made = build_proposal(grid, m, v, budget, index, file_id, notes)
+        return (made, calls, 0) if made else (None, calls, 0)

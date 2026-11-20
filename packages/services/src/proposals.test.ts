@@ -8,6 +8,7 @@ import { agentRuns, assignments, connect, extractedRows, proposals, withTenant, 
 import { createFileFixture, createTestTenant, TEST_APP_URL, TEST_OWNER_URL, type FileFixture, type TestTenant } from "@taxops/db/src/testing";
 import {
   decideProposal, getProposal, getRequestDetail, listAudit, listProposals, loadSession, NotFoundError, pendingProposalCount, verifyAuditTrail,
+  pendingWorkForFile, reprocessFile, requestRemap,
   type ServiceContext,
 } from "./index";
 
@@ -156,5 +157,43 @@ describe("AI status on the request page", () => {
     const [p] = (await listProposals(await rev(), { requestId: f.requestId })).rows;
     await decideProposal(await rev(), p!.id, { decision: "accepted" });
     expect(await ext(await rev(), f.requestId)).toMatchObject({ state: "accepted", accepted: 1 });
+  });
+});
+
+describe("correcting a mapping and re-processing", () => {
+  const MAP = { headerRow: 4, columns: { account_code: "a", account_name: "B", debit: "C", credit: "D" } };
+  const jobsOfType = async (fileId: string, type: string) =>
+    (await withTenant(owner.db, { tenantId: A.tenantId }, (tx) => tx.execute(sql`select payload from jobs where type = ${type} and payload->>'fileId' = ${fileId}`))).rows as any[];
+
+  it("queues a re-extraction with the reviewer's mapping and audits what changed", async () => {
+    const { id, f } = await fresh();
+    await requestRemap(await rev(), id, MAP);
+    const [job] = await jobsOfType(f.fileId, "extraction.remap");
+    expect(job.payload).toMatchObject({ fileId: f.fileId, requestId: f.requestId, itemId: f.itemId, sheet: "NWU – GBP", headerRow: 4, kind: "xlsx", requestedBy: A.users.reviewer,
+      columns: { account_code: "A", account_name: "B", debit: "C", credit: "D" } }); // letters normalised to upper case
+    const ev = (await listAudit(await aud(), { requestRef: f.requestId })).rows.find((e) => e.action === "proposal.remap_requested")!;
+    expect(ev.before).toMatchObject({ headerRow: 3 }); expect(ev.after).toMatchObject({ headerRow: 4 });
+    expect(await pendingWorkForFile(await rev(), f.fileId)).toBe(1);
+    expect(await pendingWorkForFile(await con(), f.fileId)).toBe(0);
+  });
+
+  it("is limited to reviewers/managers, valid mappings, and results still awaiting review", async () => {
+    const { id } = await fresh();
+    for (const c of [await con(), await aud(), await adm()]) await expect(requestRemap(c, id, MAP)).rejects.toBeInstanceOf(ForbiddenError);
+    await expect(requestRemap(await rev(), id, { headerRow: 1, columns: { account_code: "A" } })).rejects.toThrow();
+    await expect(requestRemap(await ctxFor(B, B.users.reviewer), id, MAP)).rejects.toBeInstanceOf(NotFoundError);
+    await decideProposal(await rev(), id, { decision: "accepted" });
+    await expect(requestRemap(await rev(), id, MAP)).rejects.toBeInstanceOf(InvalidTransitionError);
+  });
+
+  it("re-processes spreadsheets only, for authorized roles, within the tenant", async () => {
+    const sheet = await createFileFixture(owner, A, "again.xlsx");
+    await reprocessFile(await mgr(), sheet.fileId);
+    expect((await jobsOfType(sheet.fileId, "file.uploaded"))[0].payload).toMatchObject({ fileId: sheet.fileId, requestId: sheet.requestId, itemId: sheet.itemId, kind: "xlsx" });
+    expect((await listAudit(await aud(), { requestRef: sheet.requestId })).rows.some((e) => e.action === "file.reprocess_requested")).toBe(true);
+    await expect(reprocessFile(await con(), sheet.fileId)).rejects.toBeInstanceOf(ForbiddenError);
+    await expect(reprocessFile(await ctxFor(B, B.users.manager), sheet.fileId)).rejects.toBeInstanceOf(NotFoundError);
+    const pdf = await createFileFixture(owner, A, "memo.pdf");
+    await expect(reprocessFile(await mgr(), pdf.fileId)).rejects.toBeInstanceOf(InvalidTransitionError);
   });
 });

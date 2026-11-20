@@ -219,6 +219,7 @@ export async function getRequestDetail(ctx: ServiceContext, requestId: string) {
         publish: can(actor.role, "request.publish") && req.status === "draft",
         close: can(actor.role, "request.close") && req.status === "approved",
         comment: can(actor.role, "comment.create") && req.status !== "closed",
+        reprocess: can(actor.role, "proposal.review"),
       },
     };
   });

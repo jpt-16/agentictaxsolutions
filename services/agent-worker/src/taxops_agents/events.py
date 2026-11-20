@@ -31,4 +31,19 @@ class ProposalAccepted(BaseModel):
     schema_: Literal["trial_balance"] = Field(alias="schema")
 
 
-EVENT_MODELS: dict[str, type[BaseModel]] = {"file.uploaded": FileUploaded, "proposal.accepted": ProposalAccepted}
+class ExtractionRemap(BaseModel):
+    """A reviewer corrected the column mapping for one sheet; re-extract it deterministically with their mapping."""
+
+    model_config = ConfigDict(extra="forbid")
+    fileId: UUID
+    submissionId: UUID
+    itemId: UUID
+    requestId: UUID
+    kind: Literal["xlsx", "csv"]
+    sheet: str = Field(min_length=1, max_length=200)
+    headerRow: int = Field(ge=1, le=1000)
+    columns: dict[Literal["account_code", "account_name", "debit", "credit", "balance"], str]
+    requestedBy: UUID
+
+
+EVENT_MODELS: dict[str, type[BaseModel]] = {"file.uploaded": FileUploaded, "proposal.accepted": ProposalAccepted, "extraction.remap": ExtractionRemap}

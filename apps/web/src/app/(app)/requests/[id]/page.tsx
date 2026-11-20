@@ -9,6 +9,7 @@ import {
   RequestStatusBadge, cn, dueLabel, formatDate, formatDateTime,
 } from "@/components/ui";
 import { CommentForm, RequestActions, ReviewForm, SubmitForm } from "./interactive";
+import { ReprocessButton } from "../../review/reprocess";
 
 export const dynamic = "force-dynamic";
 
@@ -122,6 +123,7 @@ export default async function RequestPage({ params, searchParams }: {
                                     </span>
                                     <span className="flex flex-none items-center gap-1">
                                       {f.extraction && <ExtractionBadge e={f.extraction} />}
+                                      {f.extraction && r.can.reprocess && f.previewable && ["none", "failed", "skipped", "queued"].includes(f.extraction.state) && <ReprocessButton fileId={f.id} requestId={r.id} />}
                                       {f.previewable && <Link className="btn btn-ghost btn-sm" href={`/requests/${r.id}/files/${f.id}`}>View</Link>}
                                       <a className="btn btn-ghost btn-sm" href={`/api/files/${f.id}`} aria-label={`Download ${f.name}`}><Download size={13} aria-hidden /></a>
                                     </span>

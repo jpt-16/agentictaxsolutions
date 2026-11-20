@@ -15,7 +15,7 @@ export const extractionPayloadSchema = z.object({
   schema: z.string(),
   schema_version: z.string(),
   sheet: z.string(),
-  method: z.enum(["heuristic", "llm"]),
+  method: z.enum(["heuristic", "llm", "manual"]),
   header_row: z.number().int(),
   fields: z.array(z.object({ key: z.string(), label: z.string() })),
   columns: z.record(z.string(), z.object({ letter: z.string(), header: z.string() })),
@@ -71,3 +71,21 @@ export const findingPayloadSchema = z.object({
   source_proposal_id: z.string(),
 });
 export type FindingPayload = z.infer<typeof findingPayloadSchema>;
+
+export const MAPPING_FIELDS = ["account_code", "account_name", "debit", "credit", "balance"] as const;
+export type MappingField = (typeof MAPPING_FIELDS)[number];
+
+/** A reviewer's corrected column mapping. Validated here; verified against the real data again by the worker. */
+export const remapSchema = z
+  .object({
+    headerRow: z.coerce.number().int().min(1).max(1000),
+    columns: z.partialRecord(z.enum(MAPPING_FIELDS), z.string().regex(/^[A-Za-z]{1,3}$/, "Use column letters such as A or AB")),
+  })
+  .refine((v) => (v.columns.account_code || v.columns.account_name) && ((v.columns.debit && v.columns.credit) || v.columns.balance), {
+    message: "Choose an account column and either debit and credit columns or a balance column",
+    path: ["columns"],
+  })
+  .refine((v) => new Set(Object.values(v.columns).map((c) => c.toUpperCase())).size === Object.values(v.columns).length, {
+    message: "Each column can be used for one field only",
+    path: ["columns"],
+  });

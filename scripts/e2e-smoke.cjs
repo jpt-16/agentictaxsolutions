@@ -15,6 +15,10 @@ const BASE = process.env.BASE_URL ?? "http://localhost:3000";
   page.setDefaultTimeout(8000);
   page.on("dialog", (d) => d.accept());
   const step = (m) => console.log("  ✓", m);
+  /** Server actions commit asynchronously; reload-and-check until the page reflects the change. */
+  const eventually = async (fn, tries = 6) => {
+    for (let i = 0; ; i++) { try { return await fn(); } catch (e) { if (i >= tries - 1) throw e; await page.waitForTimeout(500); } }
+  };
 
   const login = async (name) => {
     await page.goto(`${BASE}/login`);
@@ -141,6 +145,17 @@ const BASE = process.env.BASE_URL ?? "http://localhost:3000";
   await page.getByRole("button", { name: "Reject…" }).click();
   assert.equal(await page.getByRole("button", { name: "Enter a reason to reject" }).isDisabled(), true);
   step("review page shows mapping, totals gap and lineage; rejecting needs a reason");
+
+  // The reviewer corrects the column mapping; the worker re-extracts and the corrected result replaces this one.
+  await page.getByRole("button", { name: "Fix column mapping…" }).click();
+  await page.getByRole("button", { name: "Re-extract with this mapping" }).click();
+  await page.waitForSelector("text=Re-extraction queued");
+  execSync(WORKER, { cwd: path.join(__dirname, "../services/agent-worker"), stdio: "pipe", env: process.env });
+  await page.goto(`${BASE}/review`);
+  await page.getByRole("link", { name: "Trial balance – Ledger TB" }).first().click();
+  await page.waitForSelector("text=Reviewer-corrected mapping");
+  step("reviewer corrected the column mapping; the worker re-extracted and replaced the result");
+
   await page.getByRole("button", { name: "Accept as correctly read" }).click();
   await page.waitForSelector("text=Accepted");
   await page.goto(requestUrl);
@@ -159,9 +174,11 @@ const BASE = process.env.BASE_URL ?? "http://localhost:3000";
   await page.waitForSelector("text=Confirmed");
   await page.getByRole("button", { name: "Send back to contributor" }).click();
   await page.waitForSelector("text=Send back to contributor", { state: "detached" });
-  await page.goto(requestUrl);
-  await item(ITEM2).getByText("Changes requested", { exact: true }).first().waitFor();
-  await item(ITEM2).getByText(/Validation finding: Debits and credits differ by 50/).waitFor();
+  await eventually(async () => {
+    await page.goto(requestUrl);
+    await item(ITEM2).getByText("Changes requested", { exact: true }).first().waitFor({ timeout: 1500 });
+    await item(ITEM2).getByText(/Validation finding: Debits and credits differ by 50/).waitFor({ timeout: 1500 });
+  });
   step("validation raised a finding; reviewer confirmed it and sent the item back with the finding as the reason");
   await logout();
 
@@ -234,7 +251,7 @@ const BASE = process.env.BASE_URL ?? "http://localhost:3000";
     if (!/\bseq\b|Audit history/.test(more) || more.includes("No events found")) break;
     audit += "\n" + more;
   }
-  for (const a of ["request.created", "request.published", "item.submitted", "item.changes_requested", "item.approved", "request.closed", "file.rejected", "file.viewed", "file.downloaded", "proposal.created", "proposal.accepted", "rule.updated"]) {
+  for (const a of ["request.created", "request.published", "item.submitted", "item.changes_requested", "item.approved", "request.closed", "file.rejected", "file.viewed", "file.downloaded", "proposal.created", "proposal.accepted", "proposal.remap_requested", "rule.updated"]) {
     assert.ok(audit.includes(a), `audit log should include ${a}`);
   }
   step("auditor sees the full trail and the hash chain verifies");

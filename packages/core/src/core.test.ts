@@ -4,7 +4,7 @@ import { resolve } from "node:path";
 import {
   assertCan, assertCanClose, assertCanPublish, assertItemTransition, canViewRequest, can, daysUntil,
   deriveRequestStatus, isOverdue, violatesSegregationOfDuties, createRequestSchema, reviewItemSchema,
-  ForbiddenError, InvalidTransitionError, type Actor, extractionPayloadSchema, decideProposalSchema, confidenceBand, VALIDATION_RULES, parseRuleParams, findingPayloadSchema, proposalStatusLabel,
+  ForbiddenError, InvalidTransitionError, type Actor, extractionPayloadSchema, decideProposalSchema, confidenceBand, VALIDATION_RULES, parseRuleParams, findingPayloadSchema, proposalStatusLabel, remapSchema,
 } from "./index";
 
 const actor = (over: Partial<Actor> = {}): Actor => ({
@@ -170,5 +170,17 @@ describe("validation rules catalog", () => {
     const p = { schema: "trial_balance", sheet: "S", rule_id: "tb_footing", rule_name: "x", summary: "s", explanation: "e", explanation_source: "template", suggestion: "g", evidence: [{ row: 2, sheet: "S", cells: ["C2"], note: "n" }], metrics: { difference: "25" }, dedupe: "S", source_proposal_id: "x" };
     expect(findingPayloadSchema.parse(p).evidence[0]!.cells).toEqual(["C2"]);
     expect(findingPayloadSchema.safeParse({ ...p, explanation_source: "magic" }).success).toBe(false);
+  });
+});
+
+describe("remap input", () => {
+  it("accepts a complete mapping and rejects incomplete or duplicate-column ones", () => {
+    expect(remapSchema.parse({ headerRow: "2", columns: { account_code: "a", debit: "C", credit: "D" } }).headerRow).toBe(2);
+    expect(remapSchema.parse({ headerRow: 1, columns: { account_name: "B", balance: "C" } })).toBeTruthy();
+    expect(remapSchema.safeParse({ headerRow: 1, columns: { account_code: "A", debit: "C" } }).success).toBe(false);
+    expect(remapSchema.safeParse({ headerRow: 1, columns: { debit: "C", credit: "D" } }).success).toBe(false);
+    expect(remapSchema.safeParse({ headerRow: 1, columns: { account_code: "A", debit: "C", credit: "c" } }).success).toBe(false);
+    expect(remapSchema.safeParse({ headerRow: 0, columns: { account_code: "A", balance: "C" } }).success).toBe(false);
+    expect(remapSchema.safeParse({ headerRow: 1, columns: { account_code: "A1", balance: "C" } }).success).toBe(false);
   });
 });

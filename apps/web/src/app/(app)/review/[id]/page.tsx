@@ -2,11 +2,14 @@ import Link from "next/link";
 import { notFound } from "next/navigation";
 import { AlertTriangle, Bot, Download, Eye, Info, ShieldAlert } from "lucide-react";
 import { can, proposalStatusLabel } from "@taxops/core";
-import { getProposal, NotFoundError } from "@taxops/services";
+import { getProposal, NotFoundError, pendingWorkForFile, previewFile } from "@taxops/services";
+import { fileDeps } from "@/lib/files";
 import { requireContext } from "@/lib/auth";
 import { decimalDiff, formatAmount } from "@/lib/decimal";
 import { Badge, Card, CardHeader, ConfidencePill, PageHeader, SeverityBadge, cn, formatDateTime } from "@/components/ui";
 import { DecisionForm, SendBack } from "./decision";
+import { RemapForm } from "./remap-form";
+import { ReprocessButton } from "../reprocess";
 import { FindingView } from "./finding-view";
 
 export const dynamic = "force-dynamic";
@@ -37,6 +40,11 @@ export default async function ProposalPage({ params, searchParams }: { params: P
   const isFinding = p.kind === "finding";
   const diff = pl ? decimalDiff(pl.stats.sum_debit, pl.stats.sum_credit) : null;
   const pages = Math.max(1, Math.ceil(p.totalRows / ROWS));
+  const working = await pendingWorkForFile(ctx, p.file.id);
+  // Show the reviewer the sheet's first rows so they can point at the right columns (a view of the file, so it is audited).
+  const sheetRows = !isFinding && p.can.decide && p.file.previewable && pl
+    ? await previewFile(ctx, fileDeps(), p.file.id, pl.sheet).then((r) => r.preview.rows.slice(0, 15).map((row) => row.slice(0, 14))).catch(() => null)
+    : null;
   const sheetHref = (row: number) => `/requests/${p.request.id}/files/${p.file.id}?sheet=${encodeURIComponent(p.rows[0]?.sheet ?? "")}#r${row}`;
 
   return (
@@ -48,12 +56,17 @@ export default async function ProposalPage({ params, searchParams }: { params: P
           <span className="flex flex-wrap items-center gap-x-3 gap-y-1.5">
             <Badge tone={p.status === "accepted" ? "green" : p.status === "rejected" ? "red" : p.status === "pending" ? "violet" : "slate"} dot>{proposalStatusLabel(p.kind, p.status)}</Badge>
             {isFinding ? <SeverityBadge severity={p.severity} /> : <ConfidencePill value={p.confidence} />}
-            {pl && <Badge tone={pl.method === "llm" ? "indigo" : "slate"}>{pl.method === "llm" ? "AI-assisted mapping" : "Header match"}</Badge>}
+            {pl && <Badge tone={pl.method === "llm" ? "indigo" : "slate"}>{pl.method === "llm" ? "AI-assisted mapping" : pl.method === "manual" ? "Reviewer-corrected mapping" : "Header match"}</Badge>}
             <span className="inline-flex items-center gap-1.5"><Bot size={14} aria-hidden /> {isFinding ? "Validation finding · confirm or dismiss" : "AI-generated · check against the source file"}</span>
           </span>
         }
       />
 
+      {working > 0 && (
+        <p role="status" className="mb-4 rounded-lg px-3.5 py-2.5 text-[13px]" style={{ background: "var(--violet-bg)", color: "var(--violet-fg)" }}>
+          AI processing is queued or running for this file. A refreshed result will replace this one when it is ready.
+        </p>
+      )}
       {!pl && !isFinding && (
         <p role="alert" className="mb-4 flex items-start gap-2 rounded-lg px-3.5 py-2.5 text-[13px]" style={{ background: "var(--red-bg)", color: "var(--red-fg)" }}>
           <ShieldAlert size={16} className="mt-0.5 flex-none" aria-hidden /> This result does not match the expected format and cannot be shown in detail. Reject it and ask for the file to be re-processed.
@@ -157,6 +170,13 @@ export default async function ProposalPage({ params, searchParams }: { params: P
             )}
           </Card>
 
+          {sheetRows && pl && (
+            <Card>
+              <CardHeader title="Correct the mapping" subtitle="If a column was read wrongly" />
+              <RemapForm proposalId={p.id} rows={sheetRows} initialHeaderRow={pl.header_row} initial={Object.fromEntries(Object.entries(pl.columns).map(([k, c]) => [k, c.letter]))} />
+            </Card>
+          )}
+
           <Card>
             <CardHeader title="Source" />
             <dl className="space-y-3 px-5 py-4 text-[13px]">
@@ -167,6 +187,7 @@ export default async function ProposalPage({ params, searchParams }: { params: P
                 <dd className="mt-2 flex gap-2">
                   {p.file.previewable && <Link className="btn btn-secondary btn-sm" href={`/requests/${p.request.id}/files/${p.file.id}`}><Eye size={13} aria-hidden /> Open file</Link>}
                   <a className="btn btn-secondary btn-sm" href={`/api/files/${p.file.id}`}><Download size={13} aria-hidden /> Download</a>
+                  {can(ctx.session.role, "proposal.review") && <ReprocessButton fileId={p.file.id} requestId={p.request.id} small />}
                 </dd>
               </div>
             </dl>

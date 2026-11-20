@@ -110,6 +110,12 @@ describe("findings", () => {
     expect((await getProposal(await rev(), fin)).can.sendBack).toBe(false); // item is no longer awaiting review
   });
 
+  it("do not change the file's extraction status (a pending finding is not a pending extraction)", async () => {
+    const { f, ext } = await withFinding();
+    const status = async () => (await getRequestDetail(await mgr(), f.requestId)).items[0]!.submissions[0]!.files[0]!.extraction;
+    expect(await status()).toMatchObject({ state: "accepted", pending: 0, accepted: 1, firstProposalId: ext });
+  });
+
   it("summarize on the request page for reviewers only, and are tenant-isolated", async () => {
     const { f, fin } = await withFinding();
     const v = (await getRequestDetail(await mgr(), f.requestId)).validation!;
