@@ -1,0 +1,13 @@
+# Optional: local Postgres for developers with Docker.
+services:
+  db:
+    image: postgres:16
+    environment:
+      POSTGRES_PASSWORD: postgres
+      POSTGRES_DB: taxops
+    ports: ["5433:5432"]
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+      - ./scripts/bootstrap-db.sql:/docker-entrypoint-initdb.d/01-bootstrap.sql:ro
+volumes:
+  pgdata:

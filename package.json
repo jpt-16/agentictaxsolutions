@@ -1,0 +1,19 @@
+{
+  "name": "taxops",
+  "private": true,
+  "version": "0.0.0",
+  "packageManager": "pnpm@10.28.0",
+  "engines": {
+    "node": ">=22"
+  },
+  "scripts": {
+    "dev": "pnpm --filter @taxops/web dev",
+    "build": "pnpm --filter @taxops/web build",
+    "typecheck": "pnpm -r typecheck",
+    "test": "pnpm -r --workspace-concurrency=1 test",
+    "db:generate": "pnpm --filter @taxops/db generate",
+    "db:migrate": "pnpm --filter @taxops/db migrate",
+    "db:seed": "pnpm --filter @taxops/services seed",
+    "db:reset": "pnpm --filter @taxops/services reset"
+  }
+}

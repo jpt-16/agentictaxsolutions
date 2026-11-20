@@ -1,0 +1,111 @@
+"""Provider-agnostic LLM gateway.
+
+Every model call in the platform goes through this interface, so we have ONE place to:
+  * swap providers (Gemini today; any other tomorrow) without touching agent code,
+  * redact sensitive identifiers before they leave our boundary,
+  * log metadata (model, tokens, latency) without logging tenant content,
+  * enforce structured, schema-validated output.
+"""
+from __future__ import annotations
+
+import os
+import re
+from typing import Any, Protocol, TypeVar, runtime_checkable
+
+from pydantic import BaseModel
+
+T = TypeVar("T", bound=BaseModel)
+
+
+class LLMError(RuntimeError):
+    pass
+
+
+@runtime_checkable
+class LLMGateway(Protocol):
+    def generate_structured(self, prompt: str, schema: type[T], *, system: str | None = None) -> T: ...
+
+
+# --- redaction -----------------------------------------------------------------------------------------
+
+_PATTERNS: tuple[tuple[str, re.Pattern[str]], ...] = (
+    ("SSN", re.compile(r"\b\d{3}-\d{2}-\d{4}\b")),
+    ("EIN", re.compile(r"\b\d{2}-\d{7}\b")),
+    ("IBAN", re.compile(r"\b[A-Z]{2}\d{2}[A-Z0-9]{11,30}\b")),
+    ("CARD", re.compile(r"\b(?:\d[ -]?){13,19}\b")),
+    ("EMAIL", re.compile(r"\b[\w.+-]+@[\w-]+\.[\w.-]+\b")),
+)
+
+
+def redact(text: str) -> str:
+    """Masks common sensitive identifiers. A safety net, not a substitute for sending minimal data."""
+    for label, pattern in _PATTERNS:
+        text = pattern.sub(f"[REDACTED:{label}]", text)
+    return text
+
+
+# --- implementations -----------------------------------------------------------------------------------
+
+
+class GeminiGateway:
+    """Gemini via the `google-genai` SDK (install with `pip install .[gemini]`).
+
+    NOTE: not yet exercised against the live API in this repo; unit tests inject a stub client.
+    Verify the model id and your data-retention terms before sending anything beyond fictional data.
+    """
+
+    def __init__(self, api_key: str | None = None, model: str | None = None, client: Any | None = None) -> None:
+        self.model = model or os.environ.get("GEMINI_MODEL", "gemini-2.5-flash")
+        if client is not None:
+            self._client = client
+            return
+        key = api_key or os.environ.get("GEMINI_API_KEY")
+        if not key:
+            raise LLMError("GEMINI_API_KEY is not set.")
+        try:
+            from google import genai  # imported lazily so the package imports without the SDK
+        except ImportError as e:  # pragma: no cover
+            raise LLMError("Install the Gemini extra: pip install .[gemini]") from e
+        self._client = genai.Client(api_key=key)
+
+    def generate_structured(self, prompt: str, schema: type[T], *, system: str | None = None) -> T:
+        config: dict[str, Any] = {"response_mime_type": "application/json", "response_schema": schema}
+        if system:
+            config["system_instruction"] = redact(system)
+        try:
+            response = self._client.models.generate_content(model=self.model, contents=redact(prompt), config=config)
+        except Exception as e:  # noqa: BLE001 - deliberate: provider errors can embed prompt content
+            raise LLMError(f"Gemini request failed ({type(e).__name__}).") from None
+        parsed = getattr(response, "parsed", None)
+        if isinstance(parsed, schema):
+            return parsed
+        try:
+            return schema.model_validate_json(response.text)
+        except Exception:  # noqa: BLE001 - deliberate: never echo model output into errors
+            raise LLMError("Model output did not match the expected schema.") from None
+
+
+class FakeGateway:
+    """Deterministic gateway for tests and offline development. Returns queued responses in order."""
+
+    def __init__(self, responses: list[BaseModel] | None = None) -> None:
+        self._responses = list(responses or [])
+        self.calls: list[str] = []
+
+    def generate_structured(self, prompt: str, schema: type[T], *, system: str | None = None) -> T:
+        self.calls.append(redact(prompt))
+        if not self._responses:
+            raise LLMError("FakeGateway has no queued response.")
+        nxt = self._responses.pop(0)
+        if not isinstance(nxt, schema):
+            raise LLMError(f"Queued response is {type(nxt).__name__}, expected {schema.__name__}.")
+        return nxt
+
+
+def build_gateway(provider: str | None = None) -> LLMGateway:
+    provider = (provider or os.environ.get("LLM_PROVIDER", "gemini")).lower()
+    if provider == "gemini":
+        return GeminiGateway()
+    if provider == "fake":
+        return FakeGateway()
+    raise LLMError(f"Unknown LLM provider {provider!r}.")

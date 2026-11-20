@@ -1,0 +1,130 @@
+@import "tailwindcss";
+
+/* Neutral, brand-agnostic design tokens. Swap these to rebrand; components only use the semantic names. */
+:root {
+  --bg: #f5f6f8;
+  --surface: #ffffff;
+  --surface-2: #f9fafb;
+  --line: #e5e7eb;
+  --line-strong: #d0d5dd;
+  --ink: #0f172a;
+  --text: #1f2937;
+  --muted: #667085;
+  --subtle: #98a2b3;
+  --primary: #111827;
+  --primary-fg: #ffffff;
+  --accent: #2557d6;
+  --accent-soft: #eef3ff;
+  --focus: #2557d6;
+
+  --slate-bg: #f1f3f6;  --slate-fg: #475467;
+  --blue-bg: #e8f0ff;   --blue-fg: #1d4ed8;
+  --indigo-bg: #ecebff; --indigo-fg: #4338ca;
+  --violet-bg: #f3ebff; --violet-fg: #6d28d9;
+  --amber-bg: #fff4de;  --amber-fg: #a15c07;
+  --green-bg: #e3f6ea;  --green-fg: #137a3f;
+  --red-bg: #fde8e8;    --red-fg: #b42318;
+  --zinc-bg: #ececef;   --zinc-fg: #52525b;
+  --bar-open: #93b4f5; --bar-progress: #6366f1; --bar-changes: #f2a93b; --bar-review: #8b5cf6;
+  --bar-approved: #34a46a; --bar-closed: #a1a1aa; --bar-draft: #cbd2dc;
+  --shadow: 0 1px 2px rgba(16, 24, 40, 0.04), 0 1px 3px rgba(16, 24, 40, 0.06);
+}
+
+@media (prefers-color-scheme: dark) {
+  :root {
+    --bg: #0b0f17;
+    --surface: #121826;
+    --surface-2: #161d2c;
+    --line: #232c3d;
+    --line-strong: #324058;
+    --ink: #f3f5f9;
+    --text: #d6dbe5;
+    --muted: #93a0b5;
+    --subtle: #6b7891;
+    --primary: #e8ecf4;
+    --primary-fg: #0b0f17;
+    --accent: #7ea2ff;
+    --accent-soft: #19243d;
+    --focus: #7ea2ff;
+    --slate-bg: #1c2434;  --slate-fg: #aab5c8;
+    --blue-bg: #14264a;   --blue-fg: #8fb2ff;
+    --indigo-bg: #1d1f4d; --indigo-fg: #a5a8ff;
+    --violet-bg: #2a1c4d; --violet-fg: #c4a5ff;
+    --amber-bg: #3a2a0c;  --amber-fg: #f5c15d;
+    --green-bg: #0f3322;  --green-fg: #6fd49a;
+    --red-bg: #3d1614;    --red-fg: #ff9b92;
+    --zinc-bg: #26262b;   --zinc-fg: #b4b4bd;
+    --shadow: 0 1px 2px rgba(0, 0, 0, 0.4);
+  }
+}
+
+@theme inline {
+  --color-bg: var(--bg);
+  --color-surface: var(--surface);
+  --color-surface2: var(--surface-2);
+  --color-line: var(--line);
+  --color-linestrong: var(--line-strong);
+  --color-ink: var(--ink);
+  --color-body: var(--text);
+  --color-muted: var(--muted);
+  --color-subtle: var(--subtle);
+  --color-accent: var(--accent);
+  --color-accentsoft: var(--accent-soft);
+  --font-sans: "Inter", ui-sans-serif, system-ui, -apple-system, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
+}
+
+html { color-scheme: light dark; }
+body {
+  background: var(--bg);
+  color: var(--text);
+  font-family: var(--font-sans);
+  font-size: 14px;
+  line-height: 1.5;
+  -webkit-font-smoothing: antialiased;
+  font-feature-settings: "cv11", "ss01";
+}
+.tnum { font-variant-numeric: tabular-nums; }
+:focus-visible { outline: 2px solid var(--focus); outline-offset: 2px; border-radius: 6px; }
+::selection { background: var(--accent-soft); }
+
+/* Badges */
+.badge { display: inline-flex; align-items: center; gap: 6px; padding: 2px 9px; border-radius: 999px; font-size: 12px; font-weight: 500; line-height: 18px; white-space: nowrap; }
+.badge .dot { width: 6px; height: 6px; border-radius: 999px; background: currentColor; }
+.tone-slate { background: var(--slate-bg); color: var(--slate-fg); }
+.tone-blue { background: var(--blue-bg); color: var(--blue-fg); }
+.tone-indigo { background: var(--indigo-bg); color: var(--indigo-fg); }
+.tone-violet { background: var(--violet-bg); color: var(--violet-fg); }
+.tone-amber { background: var(--amber-bg); color: var(--amber-fg); }
+.tone-green { background: var(--green-bg); color: var(--green-fg); }
+.tone-red { background: var(--red-bg); color: var(--red-fg); }
+.tone-zinc { background: var(--zinc-bg); color: var(--zinc-fg); }
+
+/* Controls */
+.btn { display: inline-flex; align-items: center; justify-content: center; gap: 8px; border-radius: 8px; font-weight: 500; font-size: 13px; padding: 7px 14px; border: 1px solid transparent; cursor: pointer; transition: background .12s, border-color .12s, opacity .12s; white-space: nowrap; }
+.btn:disabled { opacity: .55; cursor: not-allowed; }
+.btn-primary { background: var(--primary); color: var(--primary-fg); }
+.btn-primary:hover:not(:disabled) { opacity: .9; }
+.btn-secondary { background: var(--surface); color: var(--ink); border-color: var(--line-strong); box-shadow: var(--shadow); }
+.btn-secondary:hover:not(:disabled) { background: var(--surface-2); }
+.btn-ghost { background: transparent; color: var(--muted); }
+.btn-ghost:hover:not(:disabled) { background: var(--slate-bg); color: var(--ink); }
+.btn-danger { background: var(--red-bg); color: var(--red-fg); }
+.btn-success { background: var(--green-bg); color: var(--green-fg); }
+.btn-sm { padding: 4px 10px; font-size: 12px; border-radius: 7px; }
+.field { width: 100%; background: var(--surface); border: 1px solid var(--line-strong); border-radius: 8px; padding: 7px 11px; color: var(--ink); font-size: 14px; }
+.field::placeholder { color: var(--subtle); }
+.field:focus { outline: 2px solid var(--focus); outline-offset: -1px; border-color: transparent; }
+textarea.field { resize: vertical; min-height: 72px; }
+.label { display: block; font-size: 12px; font-weight: 600; color: var(--ink); margin-bottom: 5px; }
+.hint { font-size: 12px; color: var(--muted); }
+.err { font-size: 12px; color: var(--red-fg); margin-top: 4px; }
+
+/* Tables */
+.tbl { width: 100%; border-collapse: collapse; }
+.tbl th { text-align: left; font-size: 11.5px; font-weight: 600; letter-spacing: .02em; text-transform: uppercase; color: var(--muted); padding: 10px 16px; background: var(--surface-2); border-bottom: 1px solid var(--line); white-space: nowrap; }
+.tbl td { padding: 13px 16px; border-bottom: 1px solid var(--line); vertical-align: middle; }
+.tbl tbody tr:last-child td { border-bottom: 0; }
+.tbl tbody tr.row-link:hover { background: var(--surface-2); }
+.skip-link { position: absolute; left: -9999px; top: 8px; background: var(--primary); color: var(--primary-fg); padding: 8px 12px; border-radius: 8px; z-index: 100; }
+.skip-link:focus { left: 8px; }
+@media (prefers-reduced-motion: reduce) { * { transition: none !important; } }
