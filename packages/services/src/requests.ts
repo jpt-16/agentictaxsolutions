@@ -302,8 +302,8 @@ export async function closeRequest(ctx: ServiceContext, requestId: string) {
 /* ------------------------------------------------------------------ submit / review */
 
 async function syncRequestStatus(tx: Tx, ctx: ServiceContext, req: { id: string; reference: string; status: RequestStatus }) {
-  const items = await tx.select({ status: requestItems.status }).from(requestItems).where(eq(requestItems.requestId, req.id));
-  const next = deriveRequestStatus(req.status, items.map((i) => i.status));
+  const items = await tx.select({ status: requestItems.status, required: requestItems.required }).from(requestItems).where(eq(requestItems.requestId, req.id));
+  const next = deriveRequestStatus(req.status, items);
   if (next === req.status) return;
   await tx.update(requests).set({ status: next, updatedAt: new Date() }).where(eq(requests.id, req.id));
   if (next === "approved") {

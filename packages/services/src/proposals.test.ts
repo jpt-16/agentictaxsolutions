@@ -50,6 +50,7 @@ async function fresh(opts: Parameters<typeof seedProposal>[2] = {}) {
 beforeAll(async () => {
   owner = connect(TEST_OWNER_URL, { max: 4 }); app = connect(TEST_APP_URL, { max: 8 });
   A = await createTestTenant(owner, "pa"); B = await createTestTenant(owner, "pb");
+  await withTenant(owner.db, { tenantId: A.tenantId }, (tx) => tx.execute(sql`update tenants set ai_extraction_enabled = true`)); // remap/reprocess need AI on
 });
 afterAll(async () => { await owner.close(); await app.close(); });
 
@@ -195,5 +196,20 @@ describe("correcting a mapping and re-processing", () => {
     await expect(reprocessFile(await ctxFor(B, B.users.manager), sheet.fileId)).rejects.toBeInstanceOf(NotFoundError);
     const pdf = await createFileFixture(owner, A, "memo.pdf");
     await expect(reprocessFile(await mgr(), pdf.fileId)).rejects.toBeInstanceOf(InvalidTransitionError);
+  });
+});
+
+describe("audit #6: the AI switch governs reviewer-directed re-extraction too", () => {
+  it("refuses remap and re-process while the tenant has AI extraction off, and allows them again when on", async () => {
+    const { id, f } = await fresh();
+    const setAi = (on: boolean) => withTenant(owner.db, { tenantId: A.tenantId }, (tx) => tx.execute(sql`update tenants set ai_extraction_enabled = ${on}`));
+    await setAi(false);
+    try {
+      await expect(requestRemap(await rev(), id, { headerRow: 3, columns: { account_code: "A", debit: "C", credit: "D" } })).rejects.toThrow(/switched off/);
+      await expect(reprocessFile(await mgr(), f.fileId)).rejects.toThrow(/switched off/);
+      const jobs = (await withTenant(owner.db, { tenantId: A.tenantId }, (tx) => tx.execute(sql`select 1 from jobs where payload->>'fileId' = ${f.fileId}`))).rows;
+      expect(jobs).toHaveLength(0);
+    } finally { await setAi(true); }
+    await requestRemap(await rev(), id, { headerRow: 3, columns: { account_code: "A", debit: "C", credit: "D" } });
   });
 });

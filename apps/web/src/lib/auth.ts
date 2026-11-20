@@ -4,6 +4,7 @@ import { redirect } from "next/navigation";
 import { jwtVerify, SignJWT } from "jose";
 import { loadSession, type ServiceContext } from "@taxops/services";
 import { db } from "./db";
+import { checkAuthSecret } from "./auth-secret";
 
 const COOKIE = "taxops_session";
 const MAX_AGE_SECONDS = 60 * 60 * 8;
@@ -32,8 +33,9 @@ export function assertAuthConfig() {
 
 function secretKey(): Uint8Array {
   const s = process.env.AUTH_SECRET;
-  if (!s || s.length < 32) throw new Error("AUTH_SECRET must be set to a random string of at least 32 characters.");
-  return new TextEncoder().encode(s);
+  const problem = checkAuthSecret(s, process.env.NODE_ENV === "production");
+  if (problem) throw new Error(problem);
+  return new TextEncoder().encode(s!);
 }
 
 export async function startSession(tenantId: string, userId: string) {

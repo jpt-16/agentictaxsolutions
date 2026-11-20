@@ -190,11 +190,13 @@ SYSTEM = (
 
 
 def sample_prompt(grid: Grid, rows: int = 40, cols: int = 15) -> str:
-    lines = ["Columns: " + " | ".join(col_letter(i) for i in range(cols)), "<sheet_data>"]
+    # The sheet NAME is user-controlled too, so it goes inside the fenced data block, never into the instructions.
+    sheet_name = re.sub(r"\s+", " ", grid.name)[:80]
+    lines = ["Columns: " + " | ".join(col_letter(i) for i in range(cols)), "<sheet_data>", f"sheet_name\t{sheet_name}"]
     for r, row in enumerate(grid.rows[:rows], start=1):
         cells = [re.sub(r"\s+", " ", str(c))[:60] if c not in (None, "") else "" for c in row[:cols]]
         lines.append(f"{r}\t" + "\t".join(cells))
-    lines += ["</sheet_data>", f"Sheet name: {grid.name[:80]}",
+    lines += ["</sheet_data>",
               "Return the header row number and, for each of account_code, account_name, debit, credit and balance, the column letter if present."]
     return "\n".join(lines)
 

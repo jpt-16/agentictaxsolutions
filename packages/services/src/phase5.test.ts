@@ -219,3 +219,20 @@ describe("audit export", () => {
     expect(csv).toContain('""commas""');
   });
 });
+
+describe("audit #3: optional items", () => {
+  it("a request whose required items are approved can be closed even if an optional item was never touched", async () => {
+    const m = await mgr();
+    const r = await createRequest(m, { title: "Optional item request", taxYear: 2025, dueDate: "2027-01-01",
+      items: [{ title: "Required data", dataType: "other", required: true }, { title: "Nice to have", dataType: "other", required: false }],
+      assignees: [{ type: "department", id: A.departmentId }] });
+    await publishRequest(m, r.id);
+    const [req, opt] = (await getRequestDetail(m, r.id)).items;
+    await submitItem(await con(), req!.id, { note: "here it is" });
+    await reviewItem(await rev(), req!.id, { decision: "approved", rationale: "" });
+    const d = await getRequestDetail(m, r.id);
+    expect(d.status).toBe("approved");
+    expect(d.items.find((i) => i.id === opt!.id)!.status).toBe("pending");
+    expect(d.can.close).toBe(true);
+  });
+});

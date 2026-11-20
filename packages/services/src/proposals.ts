@@ -4,7 +4,7 @@ import {
   type ExtractionPayload, type FindingPayload, type ProposalStatus,
 } from "@taxops/core";
 import {
-  agentRuns, extractedRows, files, jobs, proposals, recordAudit, requestItems, requests, submissions, users, type Tx,
+  agentRuns, extractedRows, files, jobs, proposals, recordAudit, requestItems, requests, submissions, tenants, users, type Tx,
 } from "@taxops/db";
 import { auditActorOf, NotFoundError, scoped, type ServiceContext } from "./context";
 import { reviewItem } from "./requests";
@@ -193,12 +193,19 @@ export async function extractionByFile(tx: Tx, ctx: ServiceContext, fileIds: str
  * A reviewer corrected the column mapping of a PENDING extraction: queue a deterministic re-extraction of that sheet.
  * The worker verifies the mapping against the data and supersedes the pending proposal; nothing is applied here.
  */
+/** The tenant's "AI extraction" switch governs every agent that reads uploaded files, including reviewer-directed re-extraction. */
+async function assertAiEnabled(tx: Tx) {
+  const [t] = await tx.select({ on: tenants.aiExtractionEnabled }).from(tenants);
+  if (!t?.on) throw new InvalidTransitionError("AI extraction is switched off for your organization. A tenant admin can turn it on in Settings.");
+}
+
 export async function requestRemap(ctx: ServiceContext, proposalId: string, rawInput: unknown) {
   assertCan(ctx.session.role, "proposal.review");
   const input = remapSchema.parse(rawInput);
   return scoped(ctx, async (tx) => {
     const [p] = await tx.select().from(proposals).where(eq(proposals.id, proposalId));
     if (!p || p.kind !== "extraction") throw new NotFoundError("Proposal");
+    await assertAiEnabled(tx); // after the existence check, so "not found" never depends on the caller's own settings
     if (p.status !== "pending") throw new InvalidTransitionError("Only a result that is still awaiting review can be re-extracted.");
     const payload = extractionPayloadSchema.safeParse(p.payload);
     if (!payload.success) throw new InvalidTransitionError("This result is not in a readable format.");
@@ -223,6 +230,7 @@ export async function reprocessFile(ctx: ServiceContext, fileId: string) {
   return scoped(ctx, async (tx) => {
     const [f] = await tx.select({ id: files.id, name: files.originalName, submissionId: files.submissionId }).from(files).where(eq(files.id, fileId));
     if (!f) throw new NotFoundError("File");
+    await assertAiEnabled(tx);
     const [sub] = await tx.select({ itemId: submissions.itemId }).from(submissions).where(eq(submissions.id, f.submissionId));
     const [item] = await tx.select({ requestId: requestItems.requestId }).from(requestItems).where(eq(requestItems.id, sub!.itemId));
     const ext = (f.name.split(".").pop() ?? "").toLowerCase();

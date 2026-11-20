@@ -4,9 +4,17 @@ export type Level = "debug" | "info" | "warn" | "error";
 const SENSITIVE = /pass(word)?|secret|token|authorization|cookie|session|signature|api[-_]?key|code[-_]?verifier|^note$|^body$|rationale/i;
 const MAX = 500;
 
+/**
+ * Database errors embed the query's bound values ("Failed query: ...\nparams: <values>"), which can be notes, emails or tax IDs.
+ * Logs keep the SQL shape (useful) and drop the values (sensitive).
+ */
+export function scrub(text: string): string {
+  return text.replace(/\bparams:[\s\S]*$/i, "params: [redacted]");
+}
+
 export function sanitize(value: unknown, depth = 0): unknown {
   if (value == null || typeof value === "number" || typeof value === "boolean") return value;
-  if (typeof value === "string") return value.length > MAX ? `${value.slice(0, MAX)}…[${value.length - MAX} more]` : value;
+  if (typeof value === "string") { const t = scrub(value); return t.length > MAX ? `${t.slice(0, MAX)}…[${t.length - MAX} more]` : t; }
   if (value instanceof Error) return { name: value.name, message: sanitize(value.message), ...(value.cause ? { cause: sanitize(String((value.cause as Error).message ?? value.cause)) } : {}) };
   if (depth > 3) return "[nested]";
   if (Array.isArray(value)) return value.slice(0, 20).map((v) => sanitize(v, depth + 1));

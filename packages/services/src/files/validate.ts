@@ -1,4 +1,5 @@
 import { createHash } from "node:crypto";
+import { inflateRawSync, constants as zlibConstants } from "node:zlib";
 import { unzipSync } from "fflate";
 
 export const MAX_FILE_BYTES = 25 * 1024 * 1024;
@@ -64,6 +65,36 @@ function inspectZip(bytes: Buffer, required: string, label: string) {
   if (total > 250 * 1024 * 1024 || total > bytes.length * 200) throw new Error("The file expands to an unsafe size (possible decompression bomb).");
   if (!names.includes(required)) throw new Error(`The content is not a valid ${label} file.`);
   if (names.some((n) => /vbaProject\.bin$|\/macros?\/|activeX\/|\.exe$|\.dll$/i.test(n))) throw new Error("Files containing macros or embedded executables are not accepted.");
+  if (zipXmlDeclaresDtd(bytes)) throw new Error("This file contains XML document type definitions, which are not accepted. Re-save it from Excel or Word and upload again.");
+}
+
+/**
+ * Office files are ZIPs of XML. A DTD (`<!DOCTYPE`/`<!ENTITY`) has no legitimate use in them and is how XML entity-expansion
+ * ("billion laughs") and external-entity attacks start, so refuse them at the door. Only a bounded PREFIX of each XML part is
+ * inflated (a DTD must appear before the root element), so this check cannot itself be used as a decompression bomb.
+ */
+export function zipXmlDeclaresDtd(bytes: Buffer): boolean {
+  const eocd = bytes.lastIndexOf(Buffer.from([0x50, 0x4b, 0x05, 0x06]));
+  if (eocd < 0 || eocd + 22 > bytes.length) return false;
+  const entries = bytes.readUInt16LE(eocd + 10);
+  let p = bytes.readUInt32LE(eocd + 16);
+  for (let i = 0; i < entries && p + 46 <= bytes.length; i++) {
+    if (bytes.readUInt32LE(p) !== 0x02014b50) break;
+    const method = bytes.readUInt16LE(p + 10);
+    const nameLen = bytes.readUInt16LE(p + 28), extraLen = bytes.readUInt16LE(p + 30), commentLen = bytes.readUInt16LE(p + 32);
+    const local = bytes.readUInt32LE(p + 42);
+    const name = bytes.subarray(p + 46, p + 46 + nameLen).toString("utf8");
+    p += 46 + nameLen + extraLen + commentLen;
+    if (!/\.(xml|rels|vml)$/i.test(name) || local + 30 > bytes.length || bytes.readUInt32LE(local) !== 0x04034b50) continue;
+    const start = local + 30 + bytes.readUInt16LE(local + 26) + bytes.readUInt16LE(local + 28);
+    const raw = bytes.subarray(start, Math.min(bytes.length, start + 16 * 1024));
+    let head: Buffer;
+    try {
+      head = method === 0 ? raw : method === 8 ? inflateRawSync(raw, { finishFlush: zlibConstants.Z_SYNC_FLUSH, maxOutputLength: 4 * 1024 * 1024 }) : Buffer.alloc(0);
+    } catch { head = Buffer.alloc(0); }
+    if (/<!DOCTYPE|<!ENTITY/i.test(head.subarray(0, 64 * 1024).toString("latin1"))) return true;
+  }
+  return false;
 }
 
 function inspectPdf(bytes: Buffer) {

@@ -244,3 +244,56 @@ describe("ops metrics", () => {
     await expectDbError(worker.db.execute(sql`select ops_metrics()`), /permission denied/i);
   });
 });
+
+/* ===================================================================================================================
+ * Audit finding #1: the app role may change ONLY these columns. Evidence (reviews, submissions, comments) is immutable.
+ * ================================================================================================================= */
+describe("write access is pinned to exactly what the application needs", () => {
+  it("has no table-wide UPDATE anywhere, and column-level UPDATE only on the reviewed list", async () => {
+    const tableWide = await rowsOf(sql`select table_name from information_schema.role_table_grants where grantee = 'taxops_app' and privilege_type = 'UPDATE' and table_schema = 'public' order by 1`);
+    expect(tableWide.map((r) => r.table_name)).toEqual([]);
+    const cols = await rowsOf(sql`select table_name, string_agg(column_name, ',' order by column_name) as cols from information_schema.column_privileges
+      where grantee = 'taxops_app' and privilege_type = 'UPDATE' and table_schema = 'public' group by 1 order by 1`);
+    expect(Object.fromEntries(cols.map((r) => [r.table_name, r.cols]))).toEqual({
+      notifications: "read_at",
+      proposals: "decided_at,decided_by,decision_note,status",
+      request_items: "status,updated_at",
+      requests: "closed_at,description,due_date,priority,published_at,status,tax_year,title,updated_at",
+      rule_settings: "enabled,params",
+      tenants: "ai_extraction_enabled,external_llm_enabled",
+      users: "department_id,entity_id,is_active,name,role,title",
+    });
+  });
+
+  it("cannot rewrite review decisions, submission notes, comments, references or assignments", async () => {
+    const f = await createFileFixture(owner, A);
+    const as = (q: ReturnType<typeof sql>) => withTenant(app.db, { tenantId: A.tenantId, userId: A.users.manager }, (tx) => tx.execute(q));
+    for (const q of [
+      sql`update reviews set decision = 'approved'`, sql`update submissions set note = 'rewritten'`, sql`update comments set body = 'rewritten'`,
+      sql`update requests set reference = 'X' where id = ${f.requestId}`, sql`update requests set created_by = ${A.users.reviewer} where id = ${f.requestId}`,
+      sql`update assignments set user_id = ${A.users.contributor}`, sql`update departments set name = 'renamed'`, sql`update legal_entities set name = 'renamed'`,
+      sql`update request_items set request_id = request_id`,
+    ]) await expectDbError(as(q), /permission denied/i);
+  });
+
+  it("a published request's content cannot be edited even with column access", async () => {
+    const f = await createFileFixture(owner, A); // fixture requests are 'open'
+    await expectDbError(withTenant(app.db, { tenantId: A.tenantId }, (tx) => tx.execute(sql`update requests set title = 'changed after publishing' where id = ${f.requestId}`)), /cannot be edited/);
+    await withTenant(app.db, { tenantId: A.tenantId }, (tx) => tx.execute(sql`update requests set status = 'in_progress' where id = ${f.requestId}`)); // workflow still works
+  });
+
+  it("the notification trigger leaves the caller's tenant setting as it found it", async () => {
+    const f = await createFileFixture(owner, A);
+    const after = await withTenant(owner.db, { tenantId: B.tenantId }, async (tx) => {
+      const run = randomUUID(), job = randomUUID();
+      await tx.execute(sql`select set_config('app.tenant_id', ${A.tenantId}, true)`);
+      await tx.execute(sql`insert into jobs (id, tenant_id, type, payload, status) values (${job}, ${A.tenantId}, 'x', '{}', 'succeeded')`);
+      await tx.insert(s.agentRuns).values({ id: run, tenantId: A.tenantId, jobId: job, agentName: "x", agentVersion: "1", event: "x", fileId: f.fileId, status: "succeeded" });
+      await tx.execute(sql`select set_config('app.tenant_id', ${B.tenantId}, true)`); // caller is now in B ...
+      await tx.execute(sql`select set_config('app.tenant_id', ${A.tenantId}, true)`);
+      await tx.insert(s.proposals).values({ tenantId: A.tenantId, runId: run, fileId: f.fileId, requestId: f.requestId, itemId: f.itemId, kind: "extraction", title: "t", payload: {}, confidence: "0.5" });
+      return ((await tx.execute(sql`select current_setting('app.tenant_id', true) as t`)).rows[0] as any).t;
+    });
+    expect(after).toBe(A.tenantId);
+  });
+});

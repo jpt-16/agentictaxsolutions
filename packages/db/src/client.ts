@@ -13,8 +13,13 @@ export interface Connection {
   close(): Promise<void>;
 }
 
-export function connect(url: string, opts: { max?: number } = {}): Connection {
-  const pool = new pg.Pool({ connectionString: url, max: opts.max ?? 10 });
+export function connect(url: string, opts: { max?: number; statementTimeoutMs?: number } = {}): Connection {
+  // Application connections get a statement timeout so one slow query cannot tie up a connection indefinitely, and an idle-in-transaction
+  // timeout so an abandoned transaction cannot hold locks. Migration/operator connections pass no timeout.
+  const options = opts.statementTimeoutMs
+    ? `-c statement_timeout=${Math.floor(opts.statementTimeoutMs)} -c idle_in_transaction_session_timeout=${Math.floor(opts.statementTimeoutMs * 2)}`
+    : undefined;
+  const pool = new pg.Pool({ connectionString: url, max: opts.max ?? 10, ...(options ? { options } : {}) });
   const db = drizzle(pool, { schema });
   return { db, pool, close: () => pool.end() };
 }

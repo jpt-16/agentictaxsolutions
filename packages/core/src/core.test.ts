@@ -184,3 +184,19 @@ describe("remap input", () => {
     expect(remapSchema.safeParse({ headerRow: 1, columns: { account_code: "A1", balance: "C" } }).success).toBe(false);
   });
 });
+
+describe("audit #3: optional items", () => {
+  const req = (status: "pending" | "submitted" | "approved" | "changes_requested", required = true) => ({ status, required });
+  it("an untouched optional item never blocks approval", () => {
+    expect(deriveRequestStatus("in_review", [req("approved"), req("pending", false)])).toBe("approved");
+    expect(deriveRequestStatus("open", [req("pending", false)])).toBe("open");
+  });
+  it("an optional item that was submitted must still be reviewed, and its review counts", () => {
+    expect(deriveRequestStatus("in_review", [req("approved"), req("submitted", false)])).toBe("in_review");
+    expect(deriveRequestStatus("in_review", [req("approved"), req("changes_requested", false)])).toBe("changes_requested");
+    expect(deriveRequestStatus("in_review", [req("approved"), req("approved", false)])).toBe("approved");
+  });
+  it("required items still block, as before", () => {
+    expect(deriveRequestStatus("in_progress", [req("approved"), req("pending")])).toBe("in_progress");
+  });
+});

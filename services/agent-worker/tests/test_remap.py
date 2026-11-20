@@ -50,3 +50,8 @@ def test_signed_balance_mapping_works():
     rows = [["Ref", "Name", "Net"], ["1", "Cash", 50], ["2", "Pay", -50]]
     res, _ = remap(FakeFiles(make_xlsx({"S": rows})), headerRow=1, columns={"account_code": "A", "account_name": "B", "balance": "C"})
     assert [(r.values["debit"], r.values["credit"]) for r in res.rows] == [("50", "0"), ("0", "50")]
+
+
+def test_remap_respects_the_tenant_ai_switch():
+    res, _ = remap(FakeFiles(make_xlsx({"S": ODD}), ai=False))
+    assert res.proposals == [] and res.meta.status == "skipped" and "not enabled" in res.meta.detail

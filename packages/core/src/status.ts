@@ -53,8 +53,18 @@ export function assertItemTransition(from: ItemStatus, to: ItemStatus): void {
  * Request status is mostly *derived* from its items so it can never drift out of sync.
  * `draft` (before publishing) and `closed` (after sign-off) are explicit manager decisions.
  */
-export function deriveRequestStatus(current: RequestStatus, items: readonly ItemStatus[]): RequestStatus {
+export type ItemState = ItemStatus | { status: ItemStatus; required: boolean };
+
+/**
+ * Optional items count only once someone engages with them: an untouched optional item never blocks approval, but a submitted one
+ * must still be reviewed. (A bare status is treated as required, for callers that do not track the flag.)
+ */
+export function deriveRequestStatus(current: RequestStatus, allItems: readonly ItemState[]): RequestStatus {
   if (current === "draft" || current === "closed") return current;
+  const items = allItems
+    .map((i) => (typeof i === "string" ? { status: i, required: true } : i))
+    .filter((i) => i.required || i.status !== "pending")
+    .map((i) => i.status);
   if (items.length === 0) return "open";
   if (items.every((s) => s === "approved")) return "approved";
   if (items.some((s) => s === "changes_requested")) return "changes_requested";

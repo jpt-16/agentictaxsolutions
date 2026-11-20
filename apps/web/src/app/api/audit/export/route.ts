@@ -1,7 +1,8 @@
 import { exportAudit, toCsv } from "@taxops/services";
 import { getContext } from "@/lib/auth";
 import { errorResponse, isSameOrigin } from "@/lib/http";
-import { clientKey, limiter, tooMany } from "@/lib/rate-limit";
+import { limiter, tooMany } from "@/lib/rate-limit";
+import { readFormDataCapped } from "@/lib/body-limit";
 
 export const dynamic = "force-dynamic";
 const CATEGORIES = new Set(["request.", "item.", "comment.", "file.", "proposal.", "user.", "auth."]);
@@ -14,7 +15,7 @@ export async function POST(req: Request) {
   const rl = limiter("audit-export", 6, 60_000).hit(ctx.session.userId);
   if (!rl.ok) return tooMany(rl.retryAfterSec);
   try {
-    const form = await req.formData();
+    const form = await readFormDataCapped(req, 16 * 1024).catch(() => new FormData());
     const format = form.get("format") === "csv" ? "csv" : "json";
     const cat = String(form.get("cat") ?? "");
     const exp = await exportAudit(ctx, { actionPrefix: CATEGORIES.has(cat) ? cat : undefined });

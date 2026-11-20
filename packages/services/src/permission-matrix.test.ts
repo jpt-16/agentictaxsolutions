@@ -92,6 +92,7 @@ const OPS: Op[] = [
 beforeAll(async () => {
   owner = connect(TEST_OWNER_URL, { max: 4 }); app = connect(TEST_APP_URL, { max: 8 });
   A = await createTestTenant(owner, "mxa"); B = await createTestTenant(owner, "mxb");
+  await withTenant(owner.db, { tenantId: A.tenantId }, (tx) => tx.execute(sql`update tenants set ai_extraction_enabled = true`)); // remap/reprocess need AI on
 });
 afterAll(async () => { await owner.close(); await app.close(); });
 

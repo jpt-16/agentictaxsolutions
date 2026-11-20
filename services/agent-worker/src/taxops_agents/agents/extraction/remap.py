@@ -30,6 +30,9 @@ class RemapAgent(Agent[ExtractionRemap, AgentResult]):
         if ctx.files is None:
             raise RuntimeError("RemapAgent requires file access.")
         blob = ctx.files.open(payload.fileId)
+        if not blob.meta.ai_extraction_enabled:
+            # The tenant's switch covers every agent that reads uploaded files, including reviewer-directed re-extraction.
+            return AgentResult(meta=RunMeta(status="skipped", detail="AI extraction is not enabled for this tenant.", duration_ms=elapsed()))
         try:
             grids = read_grids(blob.data, payload.kind)
         except WorkbookError as e:

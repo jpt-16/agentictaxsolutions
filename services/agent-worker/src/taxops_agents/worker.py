@@ -122,7 +122,8 @@ class Worker:
 
     def run_once(self) -> int:
         """Claims and processes one batch. Returns how many jobs were handled (success or failure)."""
-        with psycopg.connect(self.conninfo, autocommit=True, row_factory=dict_row) as conn:
+        # Statement and idle-transaction timeouts: a stuck query cannot hold a connection or locks indefinitely.
+        with psycopg.connect(self.conninfo, autocommit=True, row_factory=dict_row, options="-c statement_timeout=60000 -c idle_in_transaction_session_timeout=120000") as conn:
             jobs = self.claim(conn)
             for job in jobs:
                 self.process(conn, job)

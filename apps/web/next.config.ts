@@ -21,9 +21,9 @@ const config: NextConfig = {
   serverExternalPackages: ["pg"],
   async headers() {
     const baseline = securityHeaders.filter((h) => h.key !== "Content-Security-Policy");
-    const pageCsp = securityHeaders.filter((h) => h.key === "Content-Security-Policy");
     return [
-      { source: "/((?!api/files/).*)", headers: [...baseline, ...pageCsp] },
+      // Pages get their nonce-based Content-Security-Policy per request from src/proxy.ts.
+      { source: "/((?!api/files/).*)", headers: baseline },
       // User-uploaded bytes: the route sets its own `default-src 'none'; sandbox` CSP, which a global rule must not override.
       { source: "/api/files/:id", headers: baseline },
     ];

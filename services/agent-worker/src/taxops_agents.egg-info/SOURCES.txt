@@ -4,6 +4,7 @@ src/taxops_agents/__main__.py
 src/taxops_agents/contract.py
 src/taxops_agents/events.py
 src/taxops_agents/llm.py
+src/taxops_agents/logging_setup.py
 src/taxops_agents/registry.py
 src/taxops_agents/storage.py
 src/taxops_agents/store.py
@@ -19,7 +20,17 @@ src/taxops_agents/agents/extraction/agent.py
 src/taxops_agents/agents/extraction/amounts.py
 src/taxops_agents/agents/extraction/canonical.py
 src/taxops_agents/agents/extraction/mapping.py
+src/taxops_agents/agents/extraction/remap.py
 src/taxops_agents/agents/extraction/workbook.py
+src/taxops_agents/agents/validation/__init__.py
+src/taxops_agents/agents/validation/agent.py
+src/taxops_agents/agents/validation/rules.py
 tests/test_agents.py
+tests/test_amounts.py
 tests/test_events.py
+tests/test_extraction.py
+tests/test_extraction_db.py
+tests/test_logging.py
+tests/test_remap.py
+tests/test_validation.py
 tests/test_worker.py

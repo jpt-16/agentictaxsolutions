@@ -4,7 +4,7 @@ import os from "node:os";
 import path from "node:path";
 import { mkdtemp, readFile } from "node:fs/promises";
 import ExcelJS from "exceljs";
-import { zipSync, strToU8 } from "fflate";
+import { zipSync, strToU8, unzipSync } from "fflate";
 import { randomUUID } from "node:crypto";
 import { validateUpload, sanitizeFileName, MAX_FILE_BYTES } from "./validate";
 import { ClamdScanner, EicarScanner, ScanUnavailableError, buildScanner } from "./scanner";
@@ -202,5 +202,26 @@ describe("resolveStorageDir", () => {
     expect(resolveStorageDir({ STORAGE_DIR: ".storage" })).toBe(path.join(root, ".storage"));
     expect(resolveStorageDir({})).toBe(path.join(root, ".storage"));
     expect(resolveStorageDir({ STORAGE_DIR: "/var/data/tax" })).toBe("/var/data/tax");
+  });
+});
+
+describe("audit #10: XML document type definitions are refused at upload", () => {
+  const withSharedStrings = async (xml: string) => {
+    const wb = new ExcelJS.Workbook(); wb.addWorksheet("S").addRow(["hello"]);
+    const files = unzipSync(new Uint8Array(await wb.xlsx.writeBuffer()));
+    files["xl/sharedStrings.xml"] = strToU8(xml);
+    return Buffer.from(zipSync(files));
+  };
+  it("rejects an entity-expansion ('billion laughs') workbook and an external-entity one", async () => {
+    const lol = ['<!ENTITY a0 "lol">', ...Array.from({ length: 6 }, (_, i) => `<!ENTITY a${i + 1} "${`&a${i};`.repeat(10)}">`)].join("");
+    reject("bomb.xlsx", await withSharedStrings(`<?xml version="1.0"?><!DOCTYPE sst [${lol}]><sst><si><t>&a6;</t></si></sst>`), /document type definitions/);
+    reject("xxe.xlsx", await withSharedStrings(`<?xml version="1.0"?><!DOCTYPE x [<!ENTITY e SYSTEM "file:///etc/passwd">]><sst><si><t>&e;</t></si></sst>`), /document type definitions/);
+  });
+  it("finds a DTD even in an uncompressed (stored) part, and still accepts normal Excel files", async () => {
+    const wb = new ExcelJS.Workbook(); wb.addWorksheet("S").addRow(["hello"]);
+    const files = unzipSync(new Uint8Array(await wb.xlsx.writeBuffer()));
+    files["xl/sharedStrings.xml"] = strToU8(`<?xml version="1.0"?><!DOCTYPE sst><sst/>`);
+    reject("stored.xlsx", Buffer.from(zipSync(files, { level: 0 })), /document type definitions/);
+    expect(validateUpload("ok.xlsx", await makeXlsx([["a", 1], ["b", 2]])).kind).toBe("xlsx");
   });
 });

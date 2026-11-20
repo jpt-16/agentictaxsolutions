@@ -109,11 +109,36 @@ failing model never blocks a user request.
 | 4 | Validation agent (deterministic rules + LLM explanations), finding triage, approval | |
 | 5 | Hardening: permission/isolation suites, audit export, observability, notifications, SSO, administration | Done |
 
+## Security audit (post-build)
+
+A full audit after Phase 5 found one High, five Medium and ten Low issues; every finding was reproduced before being reported.
+Fixed, each with a regression test:
+
+| # | Severity | Finding | Fix |
+|---|---|---|---|
+| 1 | High | App role could rewrite review decisions, submission notes, comments, request references, assignments and entity names | Column-level grants only (pinned by a structural test); published requests' content guarded by a trigger |
+| 2 | Medium | Error logs contained bound query values (notes, emails, IDs) | Parameters stripped from all logged messages |
+| 3 | Medium | "Required" flag ignored: an untouched optional item blocked approval forever | Untouched optional items no longer block; engaged ones still need review |
+| 4 | Medium | The example `AUTH_SECRET` would have been accepted in production | Placeholder/predictable secrets rejected; unsafe production config refuses to start |
+| 5 | Medium | Uploads without a size header were buffered in memory without limit | Streaming byte cap; missing length -> 411 |
+| 6 | Medium | Remap/re-process ran while the tenant's AI switch was off | Enforced in both the services and the agent |
+| 9 | Low | No script Content-Security-Policy | Per-request nonce + `strict-dynamic` (verified in a production build) |
+| 10 | Low | `defusedxml` undeclared; DTD-bearing Office files accepted | Declared; DTDs/entities rejected at upload (bounded prefix scan) |
+| 11 | Low | Notification redirect accepted `/\evil.com` | Strict same-site path check |
+| 12 | Low | Sheet name sat outside the prompt's data fence | Moved inside |
+| 13 | Low | No statement timeouts | 15 s (web) / 60 s (worker), plus idle-in-transaction timeouts |
+| 14 | Low | `/api/ready` exposed queue depth anonymously | Returns status only |
+| 15 | Low | Notification trigger changed the transaction's tenant setting | Restores it |
+
+Accepted for now (documented below): #7 sign-out does not revoke existing tokens (8-hour lifetime, deactivation still immediate),
+#8 rate limits trust `X-Forwarded-For` (deploy behind a proxy that sets it), #16 the dev sign-in helper remains in the schema.
+
 ## Known limitations (read before production)
 
 **Security and identity**
 - **Dev sign-in is passwordless** and must never be exposed (production refuses it). SSO is implemented and tested against a mock provider, **not against a real IdP**: verify claims (`email_verified`, issuer format, key rotation) with yours. There is no SCIM provisioning or group-to-role mapping yet; admins add people by email.
-- **Rate limiting is per server instance** (in memory). Behind several instances, enforce the same limits at the edge or move to a shared store.
+- **Rate limiting is per server instance** (in memory) and keys on `X-Forwarded-For`, so it must sit behind a proxy that overwrites that header. Behind several instances, enforce limits at the edge or use a shared store.
+- **Sign-out does not revoke a copied session token** (it stays valid until its 8-hour expiry); deactivating the user cuts access immediately. A server-side session list would close this.
 - Contributor scoping is enforced in the service layer (tenant isolation is RLS). Pushing per-user scope into RLS is a candidate hardening step.
 - **The dev malware scanner is a stub** (EICAR only) and the ClamAV client was only tested against a fake clamd. Production refuses to start uploads without `CLAMAV_HOST`. Dev storage is unencrypted local disk; production needs object storage with KMS (`FileStorage`/`BlobStorage` are the seams). No retention/legal-hold policy yet.
 - Audit writes serialize per tenant (gap-free chain). Integrity verification is O(n) and on demand. The export is capped at 50,000 events per request.
