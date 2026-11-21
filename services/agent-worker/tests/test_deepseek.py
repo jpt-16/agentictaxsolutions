@@ -141,3 +141,16 @@ def test_the_extraction_agent_works_end_to_end_with_this_provider_and_still_veri
     ctx2, _ = context(files2, gateway=gw(serve(reply(json.dumps(bad)))), allow_llm=True)
     res2 = ExtractionAgent().run(ctx2, payload(files2))
     assert not res2.proposals or res2.proposals[0].payload["method"] != "llm"
+
+
+def test_when_the_model_cannot_help_the_run_says_why_even_for_text_formatted_amounts():
+    """Amounts stored as text (common outside the US) must not hide the reason the model was unavailable."""
+    rows = [["Posn", "Bezeichnung X", "Plus", "Minus"], ["1000", "Kasse", "412.350,75", ""], ["2000", "Bank", "", "400.000,00"], ["3000", "Kapital", "", "12.350,75"], ["4000", "Umsatz", "", "5,00"], ["5000", "Kosten", "5,00", ""]]
+    from taxops_agents.llm import NullGateway
+    for gateway, expected in ((NullGateway("This tenant has not allowed external LLM processing."), "not allowed external LLM"), (None, "DeepSeek request failed (HTTP 401)")):
+        files = FakeFiles(make_xlsx({"S": rows}))
+        if gateway is None:
+            srv = Server(reply("x", status=401, raw=b"{}")); gateway = gw(srv)
+        ctx, _ = context(files, gateway=gateway, allow_llm=True)
+        res = ExtractionAgent().run(ctx, payload(files))
+        assert res.proposals == [] and "Why the AI model did not help" in res.meta.detail and expected in res.meta.detail, res.meta.detail

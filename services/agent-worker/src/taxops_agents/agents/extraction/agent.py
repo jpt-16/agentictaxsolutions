@@ -11,6 +11,7 @@ from typing import Any
 from ...contract import Agent, AgentResult, AgentSpec, Evidence, ExtractedRow, Proposal, RunContext, RunMeta
 from ...events import FileUploaded
 from ...llm import LLMError
+from .amounts import parse_amount
 from .canonical import OUTPUT_FIELDS, TRIAL_BALANCE
 from .mapping import (
     LLM_THRESHOLD,
@@ -41,7 +42,14 @@ def _kind_of(name: str, declared: str) -> str:
 def _looks_tabular(grid: Grid) -> bool:
     """Enough numbers in enough columns that a human would call it a data table (not a cover page)."""
     width = max((len(r) for r in grid.rows), default=0)
-    numbers = sum(isinstance(c, int | float) and not isinstance(c, bool) for r in grid.rows for c in r)
+
+    def is_number(c: object) -> bool:
+        if isinstance(c, int | float) and not isinstance(c, bool):
+            return True
+        # Amounts stored as TEXT ("412.350,75", "S$1,200.00") are very common in exports from other countries.
+        return isinstance(c, str) and any(ch.isdigit() for ch in c) and parse_amount(c)[0] is not None
+
+    numbers = sum(is_number(c) for r in grid.rows for c in r)
     return len(grid.rows) >= 3 and width >= 3 and numbers >= 4
 
 
@@ -104,14 +112,17 @@ class ExtractionAgent(Agent[FileUploaded, AgentResult]):
         proposals: list[Proposal] = []
         rows: list[ExtractedRow] = []
         llm_calls, skipped_sheets, needs_ai = 0, 0, 0
+        reasons: list[str] = []
         for grid in grids:
             budget = min(MAX_ROWS_PER_SHEET, MAX_ROWS_TOTAL - len(rows))
             if budget <= 0:
                 skipped_sheets += 1
                 continue
-            made, calls, wanted_ai = self._sheet(ctx, blob.meta.file_id, grid, budget, len(proposals))
+            made, calls, wanted_ai, why = self._sheet(ctx, blob.meta.file_id, grid, budget, len(proposals))
             llm_calls += calls
             needs_ai += wanted_ai
+            if why and why not in reasons:
+                reasons.append(why)
             if made is None:
                 skipped_sheets += 1
                 continue
@@ -127,8 +138,7 @@ class ExtractionAgent(Agent[FileUploaded, AgentResult]):
         if proposals and skipped_sheets:
             detail += f"; {skipped_sheets} sheet(s) not recognized"
         if needs_ai:
-            detail += (f". {needs_ai} sheet(s) look like data tables but their headers were not recognized, and AI-assisted mapping "
-                       "was not available (tenant setting, missing API key, or provider error)")
+            detail += f". {needs_ai} sheet(s) look like data tables but their headers were not recognized by the built-in matching. Why the AI model did not help: " + "; ".join(reasons)
         return AgentResult(
             proposals=proposals, rows=rows,
             meta=RunMeta(status="succeeded", detail=detail, model=getattr(ctx.llm, "model", None) if llm_calls else None,
@@ -162,11 +172,12 @@ class ExtractionAgent(Agent[FileUploaded, AgentResult]):
             first.payload["notes"].append(f"This sheet holds {len(out) + 1} tables; each was read separately. This is the first (header on row {header_row}).")
         return out
 
-    def _sheet(self, ctx: RunContext, file_id: Any, grid: Grid, budget: int, index: int) -> tuple[tuple[Proposal, list[ExtractedRow]] | None, int, int]:
+    def _sheet(self, ctx: RunContext, file_id: Any, grid: Grid, budget: int, index: int) -> tuple[tuple[Proposal, list[ExtractedRow]] | None, int, int, str | None]:
+        """Returns (result, model calls made, 1 if a table-like sheet could not be read, why the model did not help)."""
         if not grid.rows:
-            return None, 0, 0
+            return None, 0, 0, None
         calls = 0
-        ai_unavailable = False
+        why: str | None = None
         notes: list[str] = []
         chosen: tuple[Mapping, Verification] | None = None
 
@@ -182,19 +193,22 @@ class ExtractionAgent(Agent[FileUploaded, AgentResult]):
             except LLMError as e:
                 calls -= 1
                 lm = None
-                ai_unavailable = True
+                why = f"AI-assisted mapping was not available: {e}"
                 if h is not None:
                     notes.append(f"AI-assisted mapping was not used: {e}")
+            if lm is None and why is None:
+                why = "the AI model did not recognise a trial balance in the sheet"
             if lm is not None:
                 lv = verify_mapping(grid, lm)
                 if lv.ok:
                     chosen = (lm, lv)
                 else:
+                    why = "the AI's column mapping was discarded because it did not match the data: " + " ".join(lv.reasons)
                     notes.append("The AI mapping was discarded because it did not match the data: " + " ".join(lv.reasons))
             if chosen is None and h and hv and hv.ok:
                 chosen = (h, hv)  # low-confidence heuristic answer, flagged for the reviewer
         if chosen is None:
-            return None, calls, int(ai_unavailable and _looks_tabular(grid))
+            return None, calls, int(bool(why) and _looks_tabular(grid)), why
 
         m, v = chosen
         stacked = find_other_tables(grid, m)
@@ -202,4 +216,4 @@ class ExtractionAgent(Agent[FileUploaded, AgentResult]):
             m.end_row = stacked[0]  # this table stops where the next one starts
             v = verify_mapping(grid, m)
         made = build_proposal(grid, m, v, budget, index, file_id, notes)
-        return (made, calls, 0) if made else (None, calls, 0)
+        return (made, calls, 0, None) if made else (None, calls, 0, None)
