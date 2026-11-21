@@ -14,6 +14,10 @@ export interface Connection {
 }
 
 export function connect(url: string, opts: { max?: number; statementTimeoutMs?: number } = {}): Connection {
+  // Neon's pooled endpoint (host contains "-pooler") rejects the per-connection timeouts below. Fail with the fix instead of an obscure protocol error.
+  if (opts.statementTimeoutMs && /-pooler\./.test(new URL(url).hostname)) {
+    throw new Error("DATABASE_URL points at a pooled (-pooler) connection, which does not support the statement timeout this app sets. Use the direct (non-pooled) connection string, the one without -pooler in the host.");
+  }
   // Application connections get a statement timeout so one slow query cannot tie up a connection indefinitely, and an idle-in-transaction
   // timeout so an abandoned transaction cannot hold locks. Migration/operator connections pass no timeout.
   const options = opts.statementTimeoutMs

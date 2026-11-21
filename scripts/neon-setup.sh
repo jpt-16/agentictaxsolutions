@@ -21,10 +21,12 @@ psql "$ADMIN_URL" -q -v ON_ERROR_STOP=1 -v owner_pw="$OWNER_PW" -v app_pw="$APP_
 # Build role URLs by swapping the credentials in the admin URL.
 rest="${ADMIN_URL#*@}"; scheme="${ADMIN_URL%%://*}"
 url() { printf '%s://%s:%s@%s' "$scheme" "$1" "$2" "$rest"; }
+# node-postgres treats require as verify-full and warns; say it explicitly. The Python worker (libpq) keeps the URL's own sslmode.
+nodeurl() { url "$1" "$2" | sed 's/sslmode=require/sslmode=verify-full/'; }
 umask 177
 {
-  echo "DATABASE_OWNER_URL=$(url taxops_owner "$OWNER_PW")"
-  echo "DATABASE_URL=$(url taxops_app "$APP_PW")"
+  echo "DATABASE_OWNER_URL=$(nodeurl taxops_owner "$OWNER_PW")"
+  echo "DATABASE_URL=$(nodeurl taxops_app "$APP_PW")"
   echo "WORKER_DATABASE_URL=$(url taxops_worker "$WORKER_PW")"
 } > .env.neon
 DATABASE_OWNER_URL="$(grep '^DATABASE_OWNER_URL=' .env.neon | cut -d= -f2-)" pnpm db:migrate
