@@ -17,9 +17,18 @@ ALTER ROLE taxops_app PASSWORD :'app_pw';
 ALTER ROLE taxops_worker PASSWORD :'worker_pw';
 
 GRANT taxops_ops TO taxops_owner;
--- Allow this session to hand ownership to taxops_owner (needed on managed Postgres where the project owner is not a true superuser).
-SELECT format('GRANT taxops_owner TO %I', current_user) WHERE NOT pg_has_role(current_user, 'taxops_owner', 'MEMBER') \gexec
-SELECT format('ALTER DATABASE %I OWNER TO taxops_owner', current_database()) \gexec
-ALTER SCHEMA public OWNER TO taxops_owner;
+-- Ownership handover happens once. If taxops_owner already owns this database, a re-run only rotates the passwords above.
+SELECT (pg_get_userbyid(datdba) = 'taxops_owner') AS handed_over FROM pg_database WHERE datname = current_database() \gset
+\if :handed_over
+  \echo Database already owned by taxops_owner: passwords rotated, nothing else to do.
+\else
+-- Privileges on the public schema are set while this session still owns the database.
 REVOKE ALL ON SCHEMA public FROM PUBLIC;
 GRANT USAGE ON SCHEMA public TO taxops_app, taxops_worker, taxops_ops;
+-- Postgres 15+: public is owned by pg_database_owner, so it follows the database owner automatically. Only move it by hand otherwise.
+SELECT 'ALTER SCHEMA public OWNER TO taxops_owner'
+  WHERE (SELECT nspowner::regrole::text FROM pg_namespace WHERE nspname = 'public') NOT IN ('pg_database_owner', 'taxops_owner') \gexec
+-- Postgres 16+: the creator of a role gets ADMIN rights on it but not the right to SET ROLE to it, which ALTER ... OWNER TO requires.
+SELECT format('GRANT taxops_owner TO %I WITH SET TRUE, INHERIT FALSE', current_user) WHERE NOT pg_has_role(current_user, 'taxops_owner', 'SET') \gexec
+SELECT format('ALTER DATABASE %I OWNER TO taxops_owner', current_database()) \gexec
+\endif
