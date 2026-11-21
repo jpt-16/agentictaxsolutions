@@ -75,6 +75,7 @@ class TB:
     sheet: str
     currency: str | None
     rows: list[Row]
+    complete: bool = True  # False when only part of the trial balance was read, so absence of an amount proves nothing
 
 
 @dataclass
@@ -91,7 +92,8 @@ def load(proposals: list[RelatedProposal]) -> Data:
         pl = p.payload
         if p.schema_key == "trial_balance":
             tbs.append(TB(str(p.id), p.file_name, str(pl.get("sheet", "")), (pl.get("metadata") or {}).get("currency"),
-                          [Row(r["position"], r["sheet"], r["source_row"], r["values"], r["cells"], list(r.get("issues") or [])) for r in p.rows]))
+                          [Row(r["position"], r["sheet"], r["source_row"], r["values"], r["cells"], list(r.get("issues") or [])) for r in p.rows],
+                          p.row_total is None or p.row_total <= len(p.rows)))
         elif p.schema_key == "supporting_document" and pl.get("document_type") == "Balance confirmation":
             excerpt = str(pl.get("excerpt", ""))
             amounts: list[Amount] = []
@@ -151,7 +153,7 @@ def reconcile(data: Data) -> list[Draft]:
                 hits += [(tb, r) for r in tb.rows if abs(abs(_net(r)) - amt.value) <= tol and _net(r) != 0]
             doc_side = side_of(amt.context)
             if not hits:
-                if comparable and enabled("rc_amount_unmatched"):
+                if comparable and all(t.complete for t in comparable) and enabled("rc_amount_unmatched"):  # never claim absence from a partial read
                     names = ", ".join(t.sheet or t.file_name for t in comparable)
                     out.append(Draft("rc_amount_unmatched", RULE_BY_ID["rc_amount_unmatched"].severity,
                                      f"{amt.text} in {doc.file_name} is not in the books",

@@ -108,6 +108,7 @@ class RelatedProposal(BaseModel):
     file_name: str
     item_title: str
     rows: list[dict[str, Any]] = Field(default_factory=list)
+    row_total: int | None = None  # how many rows the trial balance has; more than len(rows) means the read was capped
 
 
 class RelatedSet(BaseModel):

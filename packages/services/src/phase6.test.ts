@@ -5,7 +5,7 @@ import { resolve } from "node:path";
 import { eq, sql } from "drizzle-orm";
 import { agentRuns, auditEvents, connect, extractedRows, jobs, proposals, withTenant, type Connection } from "@taxops/db";
 import { createFileFixture, createTestTenant, TEST_APP_URL, TEST_OWNER_URL, type FileFixture, type TestTenant } from "@taxops/db/src/testing";
-import { addComment, createRequest, listNotifications, mentionedUsers, publishRequest, archiveTemplate, createTemplateFromRequest, getTemplate, listTemplates, approvedDataPack, csvOf, decideProposal, exportStatusReportCsv, loadSession, requestStatusReport, DATA_PACK_COLUMNS, type ServiceContext } from "./index";
+import { databaseNowMs, addComment, createRequest, listNotifications, mentionedUsers, publishRequest, archiveTemplate, createTemplateFromRequest, getTemplate, listTemplates, approvedDataPack, csvOf, decideProposal, exportStatusReportCsv, loadSession, requestStatusReport, DATA_PACK_COLUMNS, type ServiceContext } from "./index";
 
 const golden = JSON.parse(readFileSync(resolve(__dirname, "../../../schemas/fixtures/extraction_proposal.json"), "utf8"));
 const docGolden = JSON.parse(readFileSync(resolve(__dirname, "../../../schemas/fixtures/document_proposal.json"), "utf8"));
@@ -161,5 +161,16 @@ describe("@mentions", () => {
     expect(await titles(stranger)).toEqual([]);                            // other department: never told
     await addComment(mgr, r.id, { body: `Talking to myself @${await nameOf(A.users.manager)}` });
     expect(await titles(A.users.manager)).toEqual([]);                     // no self-notification
+  });
+});
+
+describe("review fixes", () => {
+  it("the CSV export keeps negative numbers intact but still neutralises anything that could be a formula", () => {
+    const csv = csvOf(["v"], [{ v: "-1200" }, { v: "+5.25" }, { v: "=1+1" }, { v: "-x" }, { v: "@SUM(A1)" }, { v: "-1+1" }]);
+    expect(csv.split("\r\n").slice(1, 7)).toEqual(["-1200", "+5.25", "'=1+1", "'-x", "'@SUM(A1)", "'-1+1"]);
+  });
+  it("session timestamps come from the database clock", async () => {
+    const t = await databaseNowMs(app.db);
+    expect(Math.abs(t - Date.now())).toBeLessThan(10_000);
   });
 });

@@ -53,3 +53,9 @@ export async function revokeMySessions(db: Db, tenantId: string, userId: string,
     await recordAudit(tx, { tenantId, actor: { type: "user", id: userId, label: name }, action: "auth.logout", entityType: "user", entityId: userId, summary: `${name} signed out`, after: {} });
   });
 }
+
+/** The database's clock in ms. Session issue times and revocation times both come from it, so clock skew between servers cannot leave a token valid after sign-out. */
+export async function databaseNowMs(db: Db): Promise<number> {
+  const res = await db.execute(sql`select (extract(epoch from clock_timestamp()) * 1000)::bigint as ms`);
+  return Number((res.rows[0] as { ms: string | number }).ms);
+}

@@ -4,11 +4,12 @@ import { extractedRows, files, proposals, recordAudit, requestItems, requests, u
 import { auditActorOf, NotFoundError, scoped, todayOf, type ServiceContext } from "./context";
 
 const FORMULA = /^[=+\-@\t\r]/;
+const PLAIN_NUMBER = /^[-+]?\d+(\.\d+)?$/; // a bare number cannot be a formula, so negative amounts keep their sign
 /** CSV with spreadsheet-formula neutralisation on every text cell, so an opened export can never execute anything. */
 export function csvOf(columns: string[], rows: Record<string, unknown>[]): string {
   const cell = (v: unknown) => {
     let t = v === null || v === undefined ? "" : v instanceof Date ? v.toISOString() : String(v);
-    if (typeof v === "string" && FORMULA.test(t)) t = "'" + t;
+    if (typeof v === "string" && FORMULA.test(t) && !PLAIN_NUMBER.test(t)) t = "'" + t;
     return /[",\n\r]/.test(t) ? `"${t.replace(/"/g, '""')}"` : t;
   };
   return [columns.join(","), ...rows.map((r) => columns.map((c) => cell(r[c])).join(","))].join("\r\n") + "\r\n";

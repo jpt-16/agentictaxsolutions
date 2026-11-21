@@ -75,7 +75,7 @@ class JobProposals:
             self_id=proposal_id, request_reference=d["request"]["reference"], tax_year=d["request"]["tax_year"],
             rule_settings={x["rule_id"]: {"enabled": x["enabled"], "params": x["params"]} for x in d["settings"]},
             external_llm_enabled=bool(d["tenant"]["external_llm_enabled"]),
-            proposals=[RelatedProposal(id=p["id"], schema_key=p["schema_key"], payload=p["payload"], file_name=p["file_name"], item_title=p["item_title"], rows=p["rows"]) for p in d["proposals"]],
+            proposals=[RelatedProposal(id=p["id"], schema_key=p["schema_key"], payload=p["payload"], file_name=p["file_name"], item_title=p["item_title"], rows=p["rows"], row_total=p.get("row_total")) for p in d["proposals"]],
         )
 
 

@@ -119,6 +119,19 @@ failing model never blocks a user request.
 - **Request templates**: a request's title and items (never assignees, dates or data) can be saved and reused. Tax managers only, enforced in the app and by a database trigger. Templates are archived, never deleted.
 - **@mentions** in comments notify the named person only if they can already see the request (tenant-wide roles, or an assignee of a published request), so a mention can never reveal a request.
 
+## Security review of the later additions
+
+A second review covered the document agent, reports and exports, templates, @mentions, session revocation, the reconciliation agent and its database function. Attacks tried, all refused or contained: PDF decompression bombs, 2,000-page and self-referencing PDFs, Word zip bombs, XML entity expansion, 14 MB single-line text; script and HTML injected through cell values, sheet names, file names, document text, comments and request titles across 16 pages (none executed); every API route unauthenticated, as the wrong role, cross-origin, with the wrong method, with malformed and oversized input; and rapid-fire exports (rate limited). Four weaknesses were found by reading the code and fixed, each with a test:
+
+| # | Severity | Finding | Fix |
+|---|---|---|---|
+| 1 | Low | Token issue time came from the web server's clock but revocation from the database's; with skew, a token issued just before sign-out could survive it | Both now use the database clock (`databaseNowMs`) |
+| 2 | Medium | The reconciliation read is capped at 5,000 rows per trial balance, so an account past the cap could be reported as "not in the books" | The function returns each trial balance's true row count; the agent never claims absence from a partial read; the call is also capped at 25 proposals |
+| 3 | Low | CSV formula protection also prefixed negative numbers (`-1200`), corrupting real data | A bare number is left alone; anything else that could be a formula is still neutralised |
+| 4 | Low | A failure to revoke sessions at sign-out was swallowed silently | It is logged as an error (the cookie is still cleared) |
+
+Not tested: Gemini, a real identity provider and ClamAV against the real services; infrastructure (Docker, CI, TLS, backups) was out of scope.
+
 ## UI design system
 
 Web-first, following Apple's interface principles. All tokens live in `apps/web/src/app/globals.css`; re-skinning means changing tokens only.

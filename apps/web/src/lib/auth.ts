@@ -2,7 +2,8 @@ import "server-only";
 import { cookies } from "next/headers";
 import { redirect } from "next/navigation";
 import { jwtVerify, SignJWT } from "jose";
-import { loadSession, revokeMySessions, type ServiceContext } from "@taxops/services";
+import { databaseNowMs, loadSession, revokeMySessions, type ServiceContext } from "@taxops/services";
+import { log } from "./log";
 import { db } from "./db";
 import { checkAuthSecret } from "./auth-secret";
 import { isRevoked } from "./session-revocation";
@@ -41,7 +42,7 @@ function secretKey(): Uint8Array {
 
 export async function startSession(tenantId: string, userId: string) {
   assertAuthConfig();
-  const token = await new SignJWT({ tid: tenantId, iatms: Date.now() })
+  const token = await new SignJWT({ tid: tenantId, iatms: await databaseNowMs(db) })
     .setProtectedHeader({ alg: "HS256" })
     .setSubject(userId)
     .setIssuedAt()
@@ -55,7 +56,7 @@ export async function startSession(tenantId: string, userId: string) {
 /** Signs out: revokes every token this person holds on the server (best effort if it fails), then clears the cookie. */
 export async function endSession() {
   const ctx = await getContext().catch(() => null);
-  if (ctx) await revokeMySessions(db, ctx.session.tenantId, ctx.session.userId, ctx.session.name).catch(() => undefined);
+  if (ctx) await revokeMySessions(db, ctx.session.tenantId, ctx.session.userId, ctx.session.name).catch((e) => log.error("sign-out could not revoke the person's sessions; the cookie was cleared but a copied token may stay valid until it expires", { error: e }));
   (await cookies()).delete(COOKIE);
 }
 

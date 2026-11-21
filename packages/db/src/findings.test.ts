@@ -166,7 +166,7 @@ describe("agent_get_related (cross-file read for reconciliation)", () => {
     expect(r.request.id).toBe(f.requestId);
     const byId = Object.fromEntries(r.proposals.map((p: any) => [p.id, p]));
     expect(Object.keys(byId).sort()).toEqual([tb, doc].sort());
-    expect(byId[tb].rows).toHaveLength(3); expect(byId[doc].rows).toEqual([]);
+    expect(byId[tb].rows).toHaveLength(3); expect(byId[tb].row_total).toBe(3); expect(byId[doc].rows).toEqual([]); expect(byId[doc].row_total).toBe(0);
     expect(byId[doc]).toMatchObject({ file_name: "confirmation.docx", item_title: "Supporting document", payload: { document_type: "Balance confirmation" } });
     expect(r.tenant).toEqual({ external_llm_enabled: false });
   });

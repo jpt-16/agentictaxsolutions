@@ -59,6 +59,12 @@ def test_an_amount_the_books_do_not_have_is_flagged_with_exact_arithmetic():
     assert rules_of(reconcile(data)) == ["rc_agreement"]
 
 
+def test_a_capped_read_never_claims_an_amount_is_missing():
+    tb = tb_proposal(PAYABLE_BOOKS).model_copy(update={"row_total": 9000})        # only 3 of 9,000 rows were handed over
+    assert reconcile(load([tb, doc_proposal(["EUR 999.00"])])) == []              # absence proves nothing
+    assert rules_of(reconcile(load([tb, doc_proposal(["EUR 340,000.00"])]))) == ["rc_direction"]   # a match that WAS found is still real
+
+
 def test_different_currencies_are_never_compared_numerically():
     d = reconcile(load([tb_proposal(PAYABLE_BOOKS, currency="MXN"), doc_proposal(["EUR 340,000.00"])]))
     assert rules_of(d) == ["rc_currency"]                      # same number, different currency: not an agreement
