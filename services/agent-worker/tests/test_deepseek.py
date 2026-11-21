@@ -154,3 +154,16 @@ def test_when_the_model_cannot_help_the_run_says_why_even_for_text_formatted_amo
         ctx, _ = context(files, gateway=gateway, allow_llm=True)
         res = ExtractionAgent().run(ctx, payload(files))
         assert res.proposals == [] and "Why the AI model did not help" in res.meta.detail and expected in res.meta.detail, res.meta.detail
+
+
+def test_error_hints_help_and_the_provider_message_is_shown_only_when_asked(serve, monkeypatch):
+    body = b'{"error": {"message": "Model Not Exist: the-model-id. Your key is sk-test-key and prompt SECRET-PROMPT"}}'
+    s = serve(reply("x", status=400, raw=body))
+    monkeypatch.delenv("DEEPSEEK_DEBUG_ERRORS", raising=False)
+    with pytest.raises(LLMError) as e:
+        gw(s).generate_structured("SECRET-PROMPT", Answer)
+    assert "HTTP 400" in str(e.value) and "DEEPSEEK_MODEL" in str(e.value) and "Model Not Exist" not in str(e.value)
+    monkeypatch.setenv("DEEPSEEK_DEBUG_ERRORS", "1")
+    with pytest.raises(LLMError) as e:
+        gw(s).generate_structured("SECRET-PROMPT", Answer)
+    assert "Model Not Exist" in str(e.value) and "sk-test-key" not in str(e.value) and "[KEY]" in str(e.value)

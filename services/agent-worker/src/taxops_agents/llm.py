@@ -108,6 +108,25 @@ class DeepSeekGateway:
     """
 
     MAX_RESPONSE_BYTES = 1_000_000
+    # What the status usually means, so a misconfiguration is fixable without reading the provider's response body.
+    _HINTS = {
+        400: " Usually a wrong model id or a setting the model does not accept: check DEEPSEEK_MODEL (set DEEPSEEK_DEBUG_ERRORS=1 to see the provider's reason).",
+        401: " The API key was rejected: check DEEPSEEK_API_KEY.",
+        402: " The account has no balance.",
+        404: " Check DEEPSEEK_BASE_URL and DEEPSEEK_MODEL.",
+        422: " The provider rejected a parameter (set DEEPSEEK_DEBUG_ERRORS=1 to see why).",
+        429: " Rate limited: try again shortly.",
+    }
+
+    def _provider_message(self, e: urllib.error.HTTPError) -> str:
+        """DEBUGGING ONLY (opt-in): the provider's own error message, clipped and with the key removed. Off by default because a
+        provider could echo part of a prompt; leave it off whenever the data is not fictional."""
+        try:
+            body = json.loads(e.read(4000))
+            text = str((body.get("error") or {}).get("message") or body)
+        except Exception:  # noqa: BLE001
+            return "(no readable message)"
+        return text.replace(self._key, "[KEY]")[:300]
 
     def __init__(self, api_key: str | None = None, model: str | None = None, base_url: str | None = None, timeout: float = 60.0) -> None:
         self.model = model or os.environ.get("DEEPSEEK_MODEL", "")
@@ -140,7 +159,10 @@ class DeepSeekGateway:
             with self._opener.open(req, timeout=self._timeout) as resp:
                 raw = resp.read(self.MAX_RESPONSE_BYTES + 1)
         except urllib.error.HTTPError as e:
-            raise LLMError(f"DeepSeek request failed (HTTP {e.code}).") from None
+            msg = f"DeepSeek request failed (HTTP {e.code})." + self._HINTS.get(e.code, "")
+            if os.environ.get("DEEPSEEK_DEBUG_ERRORS") == "1":
+                msg += f" Provider said: {self._provider_message(e)}"
+            raise LLMError(msg) from None
         except Exception as e:  # noqa: BLE001 - deliberate: transport errors can embed URLs and headers
             raise LLMError(f"DeepSeek request failed ({type(e).__name__}).") from None
         if len(raw) > self.MAX_RESPONSE_BYTES:
