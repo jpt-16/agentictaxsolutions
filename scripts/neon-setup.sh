@@ -6,8 +6,14 @@
 # connection strings the app needs to .env.neon (git-ignored, mode 600). It never prints a password or a connection string.
 set -euo pipefail
 cd "$(dirname "$0")/.."
-ADMIN_URL="$(grep -E '^DATABASE_URL_UNPOOLED=' .env.local | head -1 | cut -d= -f2- | sed -e 's/^"//' -e 's/"$//')"
-[ -n "$ADMIN_URL" ] || { echo "DATABASE_URL_UNPOOLED not found in .env.local. Run: neon env pull" >&2; exit 1; }
+# `neon env pull` writes to .env.local, or to .env when one already exists; accept either.
+ADMIN_URL=""
+for f in .env.local .env; do
+  [ -f "$f" ] || continue
+  v="$(grep -E '^DATABASE_URL_UNPOOLED=' "$f" | head -1 | cut -d= -f2- | sed -e 's/^"//' -e 's/"$//')"
+  if [ -n "$v" ]; then ADMIN_URL="$v"; break; fi
+done
+[ -n "$ADMIN_URL" ] || { echo "DATABASE_URL_UNPOOLED not found in .env.local or .env. Run: neon env pull" >&2; exit 1; }
 case "$ADMIN_URL" in *-pooler*) echo "That is the pooled URL. Use the direct (unpooled) one." >&2; exit 1;; esac
 pw() { openssl rand -base64 36 | tr -d '/+=\n' | cut -c1-40; }
 OWNER_PW="$(pw)"; APP_PW="$(pw)"; WORKER_PW="$(pw)"
