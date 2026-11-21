@@ -4,7 +4,8 @@ from __future__ import annotations
 import re
 from decimal import Decimal, InvalidOperation
 
-_CURRENCY = re.compile(r"[€£$¥₹]|\b(?:USD|EUR|GBP|CAD|AUD|SGD|JPY|BRL|CHF|CNY|INR|MXN|SEK|NOK|DKK|PLN)\b", re.IGNORECASE)
+# Symbols (including prefixed ones such as S$, R$, MX$, C$) and ISO codes. Stripped before the number is read.
+_CURRENCY = re.compile(r"\b[A-Z]{1,3}\$|[€£$¥₹]|\b(?:USD|EUR|GBP|CAD|AUD|NZD|SGD|JPY|BRL|CHF|CNY|INR|MXN|SEK|NOK|DKK|PLN|PEN|COP|CLP|ARS|ZAR|HKD|AED|TRY|CZK|HUF|RON)\b", re.IGNORECASE)
 _BLANKS = {"", "-", "–", "—", "n/a", "na", "nil"}
 MAX_ABS = Decimal("1e15")
 

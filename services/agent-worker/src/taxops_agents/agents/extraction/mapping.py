@@ -6,6 +6,7 @@ or it is discarded.
 from __future__ import annotations
 
 import re
+import unicodedata
 from dataclasses import dataclass, field
 from decimal import Decimal
 
@@ -24,25 +25,32 @@ LLM_THRESHOLD = 0.85  # heuristic confidence at/above this never calls the model
 FIELDS = ("account_code", "account_name", "debit", "credit", "balance")
 
 _EXACT: dict[str, set[str]] = {
-    "account_code": {"account", "account no", "account number", "account code", "acct", "acct no", "acct code", "gl account", "gl code", "gl", "code", "account id", "ledger account", "nominal code", "konto"},
-    "account_name": {"description", "account name", "account description", "name", "narrative", "account title", "details", "gl description", "bezeichnung"},
-    "debit": {"debit", "debits", "dr", "debit amount", "debit balance", "soll"},
-    "credit": {"credit", "credits", "cr", "credit amount", "credit balance", "haben"},
-    "balance": {"balance", "net", "net balance", "closing balance", "ending balance", "amount", "net amount", "saldo", "ytd balance", "period end balance"},
+    "account_code": {"account", "account no", "account number", "account code", "acct", "acct no", "acct code", "gl account", "gl code", "gl", "code", "account id", "ledger account", "nominal code", "konto", "kontonummer", "konto nr", "cuenta", "no de cuenta", "numero de cuenta", "codigo de cuenta", "codigo", "cta", "clave", "compte", "n compte", "numero de compte", "code compte", "conta", "codigo da conta", "n conta", "conto"},
+    "account_name": {"description", "account name", "account description", "name", "narrative", "account title", "details", "gl description", "bezeichnung", "kontenbezeichnung", "kontobezeichnung", "kontoname", "kontenname", "nominal name", "nominal description", "descripcion", "nombre de la cuenta", "nombre cuenta", "concepto", "libelle", "intitule", "designation", "libelle du compte", "intitule du compte", "descricao", "nome da conta", "historico", "descrizione"},
+    "debit": {"debit", "debits", "dr", "debit amount", "debit balance", "soll", "debe", "cargo", "cargos", "debito", "debitos", "montant debit", "dare"},
+    "credit": {"credit", "credits", "cr", "credit amount", "credit balance", "haben", "haber", "abono", "abonos", "credito", "creditos", "montant credit", "avere"},
+    "balance": {"balance", "net", "net balance", "closing balance", "ending balance", "amount", "net amount", "saldo", "ytd balance", "period end balance", "saldo final", "saldo acumulado", "importe", "solde", "solde final", "saldo atual"},
 }
 _FUZZY: dict[str, tuple[str, ...]] = {
     "account_code": ("account no", "acct", "gl code", "account code", "account number"),
     "account_name": ("description", "account name", "narrative"),
-    "debit": ("debit",),
-    "credit": ("credit",),
+    "debit": ("debit", "debito", "debe"),
+    "credit": ("credit", "credito", "haber"),
     "balance": ("balance", "net"),
 }
-_TOTAL = re.compile(r"^\s*(grand\s+)?(sub)?totals?\b|^\s*total\b", re.IGNORECASE)
-_CCY = ("USD", "EUR", "GBP", "CAD", "AUD", "SGD", "JPY", "BRL", "CHF", "CNY", "INR", "MXN", "SEK", "NOK", "DKK", "PLN")
+_TOTAL = re.compile(r"^\s*(grand\s+|sub)?totals?\b|^\s*(totales|total general|totaux|sumas?|summe|gesamt(?:summe)?|somme|soma|totale)\b", re.IGNORECASE)
+_CCY = ("USD", "EUR", "GBP", "CAD", "AUD", "NZD", "SGD", "JPY", "BRL", "CHF", "CNY", "INR", "MXN", "SEK", "NOK", "DKK", "PLN", "PEN", "COP", "CLP", "ARS", "ZAR", "HKD", "AED", "TRY", "CZK", "HUF", "RON")
+_CCY_LOWER = frozenset(c.lower() for c in _CCY)
 
 
 def norm(v: object) -> str:
-    return re.sub(r"\s+", " ", re.sub(r"[^a-z0-9 ]", " ", str(v).lower())).strip() if v is not None else ""
+    """Header text for matching: lower-case, accents removed, punctuation gone, and a trailing currency tag dropped."""
+    if v is None:
+        return ""
+    t = unicodedata.normalize("NFKD", str(v)).encode("ascii", "ignore").decode().lower()
+    words = re.sub(r"\s+", " ", re.sub(r"[^a-z0-9 ]", " ", t)).strip().split(" ")
+    kept = [w for w in words if w not in _CCY_LOWER]
+    return " ".join(kept or words).strip()
 
 
 @dataclass
@@ -53,6 +61,7 @@ class Mapping:
     match_quality: float  # how trustworthy the header match was, 0..1
     notes: list[str] = field(default_factory=list)
     headers: dict[str, str] = field(default_factory=dict)
+    end_row: int | None = None  # 0-based index (exclusive) into grid.rows where this table stops; None = to the end
 
     @property
     def complete(self) -> bool:
@@ -62,32 +71,41 @@ class Mapping:
 
 
 # ------------------------------------------------------------------------------------------- heuristics
-def heuristic_mapping(grid: Grid) -> Mapping | None:
-    best: tuple[int, Mapping] | None = None
-    for r, row in enumerate(grid.rows[:HEADER_SCAN_ROWS]):
-        cols: dict[str, int] = {}
-        fuzzy: set[str] = set()
-        dupes: set[str] = set()
-        for ci, cell in enumerate(row):
-            n = norm(cell)
-            if not n or len(n) > 40:
+def _match_row(row: list[object]) -> tuple[dict[str, int], set[str], set[str]]:
+    """Which standard fields does this row's text look like? Returns (field -> column, approximate fields, ambiguous fields)."""
+    cols: dict[str, int] = {}
+    fuzzy: set[str] = set()
+    dupes: set[str] = set()
+    for ci, cell in enumerate(row):
+        n = norm(cell)
+        if not n or len(n) > 40:
+            continue
+        for f in FIELDS:
+            hit = n in _EXACT[f]
+            loose = not hit and any(tok in n for tok in _FUZZY[f])
+            if not (hit or loose):
                 continue
-            for f in FIELDS:
-                hit = n in _EXACT[f]
-                loose = not hit and any(tok in n for tok in _FUZZY[f])
-                if not (hit or loose):
-                    continue
-                if f in cols:
-                    # a second candidate for the same field: prefer an exact match, remember the ambiguity
-                    if hit and cols[f] in fuzzy:
-                        cols[f] = ci; fuzzy.discard(f)
-                    else:
-                        dupes.add(f)
+            if f in cols:
+                # a second candidate for the same field: prefer an exact match, remember the ambiguity
+                if hit and cols[f] in fuzzy:
+                    cols[f] = ci; fuzzy.discard(f)
                 else:
-                    cols[f] = ci
-                    if loose:
-                        fuzzy.add(f)
-                break
+                    dupes.add(f)
+            else:
+                cols[f] = ci
+                if loose:
+                    fuzzy.add(f)
+            break
+    return cols, fuzzy, dupes
+
+
+def heuristic_mapping(grid: Grid, start: int = 0, stop: int | None = None) -> Mapping | None:
+    """Best header row among grid.rows[start:stop] (default: the first HEADER_SCAN_ROWS rows)."""
+    best: tuple[int, Mapping] | None = None
+    end = stop if stop is not None else start + HEADER_SCAN_ROWS
+    for r in range(start, min(end, len(grid.rows))):
+        row = grid.rows[r]
+        cols, fuzzy, dupes = _match_row(row)
         if len(cols) < 2:
             continue
         m = Mapping(r + 1, cols, "heuristic", 1.0, headers={f: str(row[i]) for f, i in cols.items()})
@@ -104,7 +122,28 @@ def heuristic_mapping(grid: Grid) -> Mapping | None:
         score = len(m.columns) * 10 + (5 if m.complete else 0)
         if best is None or score > best[0]:
             best = (score, m)
-    return best[1] if best and best[1].complete else (best[1] if best else None)
+    return best[1] if best else None
+
+
+def _header_signature(row: list[object], cols: dict[str, int]) -> tuple[str, ...]:
+    return tuple(norm(row[i]) if i < len(row) else "" for i in sorted(cols.values()))
+
+
+def find_other_tables(grid: Grid, m: Mapping) -> list[int]:
+    """0-based row indexes below `m`'s header where ANOTHER table starts (a header-like row with at least three recognised
+    columns and no numbers in them). A row that repeats the SAME header (page-break repeats) is not a new table."""
+    first_sig = _header_signature(grid.rows[m.header_row - 1], m.columns)
+    out: list[int] = []
+    for ri in range(m.header_row, len(grid.rows)):
+        row = grid.rows[ri]
+        cols, _, _ = _match_row(row)
+        if len(cols) < 3 or any(isinstance(row[i], int | float) and not isinstance(row[i], bool) for i in cols.values() if i < len(row)):
+            continue
+        if {"debit", "credit"} <= cols.keys() or "balance" in cols:
+            if _header_signature(row, cols) == first_sig or _header_signature(row, m.columns) == first_sig:
+                continue
+            out.append(ri)
+    return out
 
 
 # ------------------------------------------------------------------------------------------- verification
@@ -124,6 +163,11 @@ def is_total_row(row: list[object], m: Mapping) -> bool:
     return False
 
 
+def _is_header_repeat(row: list[object], grid: Grid, m: Mapping) -> bool:
+    """A page-break repeat of this table's own header row (not data)."""
+    return _header_signature(row, m.columns) == _header_signature(grid.rows[m.header_row - 1], m.columns)
+
+
 def _cell(row: list[object], i: int | None) -> object:
     return row[i] if i is not None and i < len(row) else None
 
@@ -138,8 +182,8 @@ def verify_mapping(grid: Grid, m: Mapping) -> Verification:
         return Verification(False, 0.0, 0, ["Mapping points outside the sheet."])
     attempted = parsed = data_rows = labelled = 0
     amount_cols = [m.columns[f] for f in ("debit", "credit", "balance") if f in m.columns]
-    for row in grid.rows[m.header_row:]:
-        if not any(c not in (None, "") for c in row) or is_total_row(row, m):
+    for row in grid.rows[m.header_row:m.end_row]:
+        if not any(c not in (None, "") for c in row) or is_total_row(row, m) or _is_header_repeat(row, grid, m):
             continue
         data_rows += 1
         if any(_cell(row, m.columns.get(k)) not in (None, "") for k in ("account_code", "account_name")):
@@ -235,10 +279,13 @@ def extract_rows(grid: Grid, m: Mapping, max_rows: int) -> Extracted:
     out: list[dict] = []
     sum_d = sum_c = Decimal(0)
     rep_d = rep_c = None
-    unparsed = with_issues = 0
+    unparsed = with_issues = skipped_notes = 0
     notes: list[str] = []
-    for ri, row in enumerate(grid.rows[m.header_row:], start=m.header_row + 1):
+    amount_keys = [k for k in ("debit", "credit", "balance") if k in cols]
+    for ri, row in enumerate(grid.rows[m.header_row:m.end_row], start=m.header_row + 1):
         if not any(c not in (None, "") for c in row):
+            continue
+        if _is_header_repeat(row, grid, m):
             continue
         if is_total_row(row, m):
             d, _ = parse_amount(_cell(row, cols.get("debit"))); c, _ = parse_amount(_cell(row, cols.get("credit")))
@@ -256,6 +303,9 @@ def extract_rows(grid: Grid, m: Mapping, max_rows: int) -> Extracted:
                 cells[key] = f"{col_letter(cols[key])}{ri}"
         if not values.get("account_code") and not values.get("account_name"):
             continue  # a stray number with no label is not an account row
+        if all(_cell(row, cols[k]) in (None, "") for k in amount_keys) and not re.search(r"\d", str(values.get("account_code", ""))):
+            skipped_notes += 1  # text with no amounts and no account number: a title, note or sign-off line, not an account
+            continue
         if "account_code" not in values: values["account_code"] = ""
         if "account_name" not in values: values["account_name"] = ""
         debit = credit = Decimal(0)
@@ -288,6 +338,8 @@ def extract_rows(grid: Grid, m: Mapping, max_rows: int) -> Extracted:
         "reported_total_credit": fmt(rep_c) if rep_c is not None else None,
         "unparsed_cells": unparsed, "rows_with_issues": with_issues,
     }
+    if skipped_notes:
+        notes.append(f"{skipped_notes} row(s) with text but no amounts were skipped (notes or sign-off lines).")
     if rep_d is not None and (rep_d != sum_d or rep_c != sum_c):
         notes.append("The sheet's own total row does not match the sum of the rows read; some rows may have been missed.")
         stats["totals_mismatch"] = True

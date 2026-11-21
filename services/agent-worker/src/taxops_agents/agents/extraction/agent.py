@@ -19,6 +19,7 @@ from .mapping import (
     Verification,
     confidence,
     extract_rows,
+    find_other_tables,
     heuristic_mapping,
     llm_mapping,
     metadata_hints,
@@ -44,7 +45,7 @@ def _looks_tabular(grid: Grid) -> bool:
     return len(grid.rows) >= 3 and width >= 3 and numbers >= 4
 
 
-def build_proposal(grid: Grid, m: Mapping, v: Verification, budget: int, index: int, file_id: Any, notes: list[str] | None = None) -> tuple[Proposal, list[ExtractedRow]] | None:
+def build_proposal(grid: Grid, m: Mapping, v: Verification, budget: int, index: int, file_id: Any, notes: list[str] | None = None, label: str | None = None) -> tuple[Proposal, list[ExtractedRow]] | None:
     """Deterministic extraction + proposal for a chosen (and already verified) mapping. Shared by the automatic and manual paths."""
     ex = extract_rows(grid, m, budget)
     if not ex.rows:
@@ -59,10 +60,10 @@ def build_proposal(grid: Grid, m: Mapping, v: Verification, budget: int, index: 
     header_cells = f"{col_letter(min(m.columns.values()))}{m.header_row}:{col_letter(max(m.columns.values()))}{m.header_row}"
     how = {"llm": "AI-assisted", "manual": "reviewer-corrected"}.get(m.method, "header")
     proposal = Proposal(
-        kind="extraction", title=f"Trial balance – {grid.name}",
+        kind="extraction", title=f"Trial balance – {label or grid.name}",
         detail=f"{ex.stats['row_count']} accounts read via {how} mapping" + (f"; {n_issue_rows} row(s) need a look" if n_issue_rows else "") + ".",
         payload={
-            "schema": TRIAL_BALANCE.key, "schema_version": TRIAL_BALANCE.version, "sheet": grid.name, "method": m.method, "header_row": m.header_row,
+            "schema": TRIAL_BALANCE.key, "schema_version": TRIAL_BALANCE.version, "sheet": label or grid.name, "method": m.method, "header_row": m.header_row,
             "fields": [{"key": k, "label": next(f.label for f in TRIAL_BALANCE.fields if f.key == k)} for k in OUTPUT_FIELDS],
             "columns": {f: {"letter": col_letter(i), "header": m.headers.get(f, "")} for f, i in m.columns.items()},
             "stats": ex.stats, "metadata": hints, "notes": notes, "parse_rate": v.parse_rate, "file_id": str(file_id),
@@ -117,6 +118,9 @@ class ExtractionAgent(Agent[FileUploaded, AgentResult]):
             prop, new_rows = made
             proposals.append(prop)
             rows.extend(new_rows)
+            # More tables stacked in the same sheet (e.g. one per entity): each becomes its OWN proposal, never merged into the first.
+            for n, extra in enumerate(self._more_tables(grid, prop, blob.meta.file_id, budget - len(new_rows), len(proposals)), start=2):
+                proposals.append(extra[0]); rows.extend(extra[1])
 
         detail = (f"Extracted {len(proposals)} trial balance(s) from {len(grids)} sheet(s)" if proposals
                   else f"No trial balance found in {len(grids)} sheet(s)")
@@ -132,6 +136,32 @@ class ExtractionAgent(Agent[FileUploaded, AgentResult]):
         )
 
     # ------------------------------------------------------------------------------------------------
+    def _more_tables(self, grid: Grid, first: Proposal, file_id: Any, budget: int, index: int) -> list[tuple[Proposal, list[ExtractedRow]]]:
+        """Header-matched tables further down the same sheet. Deterministic only (no model call for secondary tables)."""
+        out: list[tuple[Proposal, list[ExtractedRow]]] = []
+        if budget <= 0:
+            return out
+        header_row = first.payload["header_row"]
+        base = heuristic_mapping(grid, header_row - 1, header_row)
+        if base is None:
+            return out
+        starts = find_other_tables(grid, base)
+        for k, ri in enumerate(starts):
+            stop = starts[k + 1] if k + 1 < len(starts) else None
+            m = heuristic_mapping(grid, ri, ri + 1)
+            if m is None or not m.complete:
+                continue
+            m.end_row = stop
+            v = verify_mapping(grid, m)
+            if not v.ok:
+                continue
+            made = build_proposal(grid, m, v, budget, index + len(out), file_id, [f"A second table starts at sheet row {ri + 1}; it was read separately."], label=f"{grid.name} (table {k + 2})")
+            if made:
+                out.append(made); budget -= len(made[1])
+        if out:
+            first.payload["notes"].append(f"This sheet holds {len(out) + 1} tables; each was read separately. This is the first (header on row {header_row}).")
+        return out
+
     def _sheet(self, ctx: RunContext, file_id: Any, grid: Grid, budget: int, index: int) -> tuple[tuple[Proposal, list[ExtractedRow]] | None, int, int]:
         if not grid.rows:
             return None, 0, 0
@@ -167,5 +197,9 @@ class ExtractionAgent(Agent[FileUploaded, AgentResult]):
             return None, calls, int(ai_unavailable and _looks_tabular(grid))
 
         m, v = chosen
+        stacked = find_other_tables(grid, m)
+        if stacked:
+            m.end_row = stacked[0]  # this table stops where the next one starts
+            v = verify_mapping(grid, m)
         made = build_proposal(grid, m, v, budget, index, file_id, notes)
         return (made, calls, 0) if made else (None, calls, 0)

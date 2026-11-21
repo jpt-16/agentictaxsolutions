@@ -148,15 +148,17 @@ def tb_duplicate_accounts(d: TBData, p: dict[str, Any]) -> list[Draft]:
 
 
 def tb_missing_identifiers(d: TBData, p: dict[str, Any]) -> list[Draft]:
-    if not any(r.code for r in d.rows):
-        return []  # a chart without codes is a format choice, not an error
-    bad = [r for r in d.rows if not r.code or not r.name]
+    has_codes, has_names = any(r.code for r in d.rows), any(r.name for r in d.rows)
+    if not (has_codes or has_names):
+        return []
+    # A column that was never mapped (or never filled) is a format choice, not an error on every row; only gaps in a column that is used.
+    bad = [r for r in d.rows if (has_codes and not r.code) or (has_names and not r.name)]
     if not bad:
         return []
     return [Draft("tb_missing_identifiers", RULE_BY_ID["tb_missing_identifiers"].severity, f"{len(bad)} account(s) missing a code or name",
                   f"Rows {', '.join(str(r.source_row) for r in bad[:10])}{'…' if len(bad) > 10 else ''} lack an account code or name.",
                   "Fill in the missing identifiers so every balance can be mapped to the chart of accounts.", d.sheet, {"count": len(bad)},
-                  [_ev(r, "Missing " + ("code" if not r.code else "name"), ("account_code", "account_name")) for r in bad[:10]])]
+                  [_ev(r, "Missing " + ("code" if has_codes and not r.code else "name"), ("account_code", "account_name")) for r in bad[:10]])]
 
 
 def tb_both_sides(d: TBData, p: dict[str, Any]) -> list[Draft]:
@@ -179,8 +181,21 @@ def tb_negative_amounts(d: TBData, p: dict[str, Any]) -> list[Draft]:
                   [_ev(r, "Negative amount") for r in bad[:10]])]
 
 
-_CONTRA = re.compile(r"accumulated|allowance|provision|depreciation|amortization|amortisation|reserve|contra|discount", re.IGNORECASE)
-_EITHER_EQUITY = re.compile(r"retained|deficit|drawing|dividend|treasury|reserve|translation|oci", re.IGNORECASE)
+# Account-name stems (accent-free, so they match with or without accents) for accounts that legitimately sit on the "other" side.
+_CONTRA = re.compile(
+    r"accumulated|allowance|provision|depreciation|amorti[sz]ation|reserve|contra|discount|"
+    r"acumulad|depreciaci|amortizaci|estimaci|reserva|"          # Spanish / Portuguese
+    r"abschreib|wertberichtig|r.ckstell|kumuliert|"               # German
+    r"amortissement|cumul|d.pr.ciation",                          # French
+    re.IGNORECASE,
+)
+_EITHER_EQUITY = re.compile(
+    r"retained|deficit|drawing|dividend|treasury|reserve|translation|oci|"
+    r"utilidad|resultado|acumulad|reserva|"                       # Spanish / Portuguese
+    r"vortrag|gewinn|verlust|r.cklage|"                           # German
+    r"report . nouveau|r.sultat|r.serve",                         # French
+    re.IGNORECASE,
+)
 
 
 def tb_unusual_side(d: TBData, p: dict[str, Any]) -> list[Draft]:

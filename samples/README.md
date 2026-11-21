@@ -27,3 +27,21 @@ Everything here is invented for testing. Regenerate with `python3 scripts/make-s
 5. As the manager, open **Reports** and download the status report or the request's approved data pack.
 
 AI extraction is on for the demo tenant. Turn on the external model (Gemini) in **Settings** (as Priya Raman) only if you have set `GEMINI_API_KEY`.
+
+## Stress-test files: `samples/messy/`
+
+Eight fictional trial balances in the awkward layouts different countries send, each with a known correct answer (`truth.json`).
+Regenerate with `python3 scripts/make-messy-samples.py`; score the extraction agent with `python scripts/score-messy-samples.py`.
+
+| File | What is awkward about it |
+|---|---|
+| `mx_balanza_mxn.xlsx` | Spanish headers (Cuenta, Descripción, Debe, Haber), title block, "Totales" row |
+| `de_saldenliste_eur.xlsx` | German headers; numbers stored as text in European format (`1.234.567,89`) |
+| `fr_balance_eur.xlsx` | French headers; thousands separated by non-breaking spaces, decimal commas, as text |
+| `us_signed_balance.xlsx` | One signed balance column, negatives in parentheses as text |
+| `uk_with_prior_year.xlsx` | Current-year and prior-year columns side by side (prior year must be ignored) |
+| `ca_header_row9_notes.xlsx` | Header on row 9, a hidden scratch sheet, sign-off and note lines under the table |
+| `sg_currency_text.xlsx` | `Dr (SGD)` / `Cr (SGD)` headers, `S$1,200.00` text amounts, dashes for blanks |
+| `br_two_entities_stacked.xlsx` | Portuguese and Spanish headers, two entities stacked on one sheet (must become two results) |
+
+The plain-code path (no AI model) reads all eight exactly. A model is still needed for layouts that no header list anticipates.

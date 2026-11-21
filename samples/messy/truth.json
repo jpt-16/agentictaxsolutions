@@ -1,0 +1,611 @@
+{
+  "mx_balanza_mxn.xlsx": {
+    "currency": "MXN",
+    "entity": "Northwind México",
+    "accounts": [
+      {
+        "code": "1000",
+        "debit": "412350.75",
+        "credit": "0"
+      },
+      {
+        "code": "1100",
+        "debit": "1204880.00",
+        "credit": "0"
+      },
+      {
+        "code": "1200",
+        "debit": "735420.10",
+        "credit": "0"
+      },
+      {
+        "code": "1600",
+        "debit": "3150000.00",
+        "credit": "0"
+      },
+      {
+        "code": "1650",
+        "debit": "0",
+        "credit": "412000.00"
+      },
+      {
+        "code": "2000",
+        "debit": "0",
+        "credit": "668940.25"
+      },
+      {
+        "code": "2100",
+        "debit": "0",
+        "credit": "215300.00"
+      },
+      {
+        "code": "2700",
+        "debit": "0",
+        "credit": "1500000.00"
+      },
+      {
+        "code": "3000",
+        "debit": "0",
+        "credit": "1000000.00"
+      },
+      {
+        "code": "4000",
+        "debit": "0",
+        "credit": "6842115.30"
+      },
+      {
+        "code": "5000",
+        "debit": "4380220.45",
+        "credit": "0"
+      },
+      {
+        "code": "6000",
+        "debit": "1890000.00",
+        "credit": "0"
+      },
+      {
+        "code": "6300",
+        "debit": "143775.30",
+        "credit": "0"
+      },
+      {
+        "code": "3100",
+        "debit": "0",
+        "credit": "1278291.05"
+      }
+    ]
+  },
+  "de_saldenliste_eur.xlsx": {
+    "currency": "EUR",
+    "entity": "Northwind GmbH",
+    "accounts": [
+      {
+        "code": "1000",
+        "debit": "412350.75",
+        "credit": "0"
+      },
+      {
+        "code": "1100",
+        "debit": "1204880.00",
+        "credit": "0"
+      },
+      {
+        "code": "1200",
+        "debit": "735420.10",
+        "credit": "0"
+      },
+      {
+        "code": "1600",
+        "debit": "3150000.00",
+        "credit": "0"
+      },
+      {
+        "code": "1650",
+        "debit": "0",
+        "credit": "412000.00"
+      },
+      {
+        "code": "2000",
+        "debit": "0",
+        "credit": "668940.25"
+      },
+      {
+        "code": "2100",
+        "debit": "0",
+        "credit": "215300.00"
+      },
+      {
+        "code": "2700",
+        "debit": "0",
+        "credit": "1500000.00"
+      },
+      {
+        "code": "3000",
+        "debit": "0",
+        "credit": "1000000.00"
+      },
+      {
+        "code": "4000",
+        "debit": "0",
+        "credit": "6842115.30"
+      },
+      {
+        "code": "5000",
+        "debit": "4380220.45",
+        "credit": "0"
+      },
+      {
+        "code": "6000",
+        "debit": "1890000.00",
+        "credit": "0"
+      },
+      {
+        "code": "6300",
+        "debit": "143775.30",
+        "credit": "0"
+      },
+      {
+        "code": "3100",
+        "debit": "0",
+        "credit": "1278291.05"
+      }
+    ]
+  },
+  "fr_balance_eur.xlsx": {
+    "currency": "EUR",
+    "entity": "Northwind France",
+    "accounts": [
+      {
+        "code": "1000",
+        "debit": "412350.75",
+        "credit": "0"
+      },
+      {
+        "code": "1100",
+        "debit": "1204880.00",
+        "credit": "0"
+      },
+      {
+        "code": "1200",
+        "debit": "735420.10",
+        "credit": "0"
+      },
+      {
+        "code": "1600",
+        "debit": "3150000.00",
+        "credit": "0"
+      },
+      {
+        "code": "1650",
+        "debit": "0",
+        "credit": "412000.00"
+      },
+      {
+        "code": "2000",
+        "debit": "0",
+        "credit": "668940.25"
+      },
+      {
+        "code": "2100",
+        "debit": "0",
+        "credit": "215300.00"
+      },
+      {
+        "code": "2700",
+        "debit": "0",
+        "credit": "1500000.00"
+      },
+      {
+        "code": "3000",
+        "debit": "0",
+        "credit": "1000000.00"
+      },
+      {
+        "code": "4000",
+        "debit": "0",
+        "credit": "6842115.30"
+      },
+      {
+        "code": "5000",
+        "debit": "4380220.45",
+        "credit": "0"
+      },
+      {
+        "code": "6000",
+        "debit": "1890000.00",
+        "credit": "0"
+      },
+      {
+        "code": "6300",
+        "debit": "143775.30",
+        "credit": "0"
+      },
+      {
+        "code": "3100",
+        "debit": "0",
+        "credit": "1278291.05"
+      }
+    ]
+  },
+  "us_signed_balance.xlsx": {
+    "currency": "USD",
+    "entity": "Northwind Inc.",
+    "accounts": [
+      {
+        "code": "1000",
+        "debit": "412350.75",
+        "credit": "0"
+      },
+      {
+        "code": "1100",
+        "debit": "1204880.00",
+        "credit": "0"
+      },
+      {
+        "code": "1200",
+        "debit": "735420.10",
+        "credit": "0"
+      },
+      {
+        "code": "1600",
+        "debit": "3150000.00",
+        "credit": "0"
+      },
+      {
+        "code": "1650",
+        "debit": "0",
+        "credit": "412000.00"
+      },
+      {
+        "code": "2000",
+        "debit": "0",
+        "credit": "668940.25"
+      },
+      {
+        "code": "2100",
+        "debit": "0",
+        "credit": "215300.00"
+      },
+      {
+        "code": "2700",
+        "debit": "0",
+        "credit": "1500000.00"
+      },
+      {
+        "code": "3000",
+        "debit": "0",
+        "credit": "1000000.00"
+      },
+      {
+        "code": "4000",
+        "debit": "0",
+        "credit": "6842115.30"
+      },
+      {
+        "code": "5000",
+        "debit": "4380220.45",
+        "credit": "0"
+      },
+      {
+        "code": "6000",
+        "debit": "1890000.00",
+        "credit": "0"
+      },
+      {
+        "code": "6300",
+        "debit": "143775.30",
+        "credit": "0"
+      },
+      {
+        "code": "3100",
+        "debit": "0",
+        "credit": "1278291.05"
+      }
+    ]
+  },
+  "uk_with_prior_year.xlsx": {
+    "currency": "GBP",
+    "entity": "Northwind UK",
+    "accounts": [
+      {
+        "code": "1000",
+        "debit": "412350.75",
+        "credit": "0"
+      },
+      {
+        "code": "1100",
+        "debit": "1204880.00",
+        "credit": "0"
+      },
+      {
+        "code": "1200",
+        "debit": "735420.10",
+        "credit": "0"
+      },
+      {
+        "code": "1600",
+        "debit": "3150000.00",
+        "credit": "0"
+      },
+      {
+        "code": "1650",
+        "debit": "0",
+        "credit": "412000.00"
+      },
+      {
+        "code": "2000",
+        "debit": "0",
+        "credit": "668940.25"
+      },
+      {
+        "code": "2100",
+        "debit": "0",
+        "credit": "215300.00"
+      },
+      {
+        "code": "2700",
+        "debit": "0",
+        "credit": "1500000.00"
+      },
+      {
+        "code": "3000",
+        "debit": "0",
+        "credit": "1000000.00"
+      },
+      {
+        "code": "4000",
+        "debit": "0",
+        "credit": "6842115.30"
+      },
+      {
+        "code": "5000",
+        "debit": "4380220.45",
+        "credit": "0"
+      },
+      {
+        "code": "6000",
+        "debit": "1890000.00",
+        "credit": "0"
+      },
+      {
+        "code": "6300",
+        "debit": "143775.30",
+        "credit": "0"
+      },
+      {
+        "code": "3100",
+        "debit": "0",
+        "credit": "1278291.05"
+      }
+    ]
+  },
+  "ca_header_row9_notes.xlsx": {
+    "currency": "CAD",
+    "entity": "Northwind Canada",
+    "accounts": [
+      {
+        "code": "1000",
+        "debit": "412350.75",
+        "credit": "0"
+      },
+      {
+        "code": "1100",
+        "debit": "1204880.00",
+        "credit": "0"
+      },
+      {
+        "code": "1200",
+        "debit": "735420.10",
+        "credit": "0"
+      },
+      {
+        "code": "1600",
+        "debit": "3150000.00",
+        "credit": "0"
+      },
+      {
+        "code": "1650",
+        "debit": "0",
+        "credit": "412000.00"
+      },
+      {
+        "code": "2000",
+        "debit": "0",
+        "credit": "668940.25"
+      },
+      {
+        "code": "2100",
+        "debit": "0",
+        "credit": "215300.00"
+      },
+      {
+        "code": "2700",
+        "debit": "0",
+        "credit": "1500000.00"
+      },
+      {
+        "code": "3000",
+        "debit": "0",
+        "credit": "1000000.00"
+      },
+      {
+        "code": "4000",
+        "debit": "0",
+        "credit": "6842115.30"
+      },
+      {
+        "code": "5000",
+        "debit": "4380220.45",
+        "credit": "0"
+      },
+      {
+        "code": "6000",
+        "debit": "1890000.00",
+        "credit": "0"
+      },
+      {
+        "code": "6300",
+        "debit": "143775.30",
+        "credit": "0"
+      },
+      {
+        "code": "3100",
+        "debit": "0",
+        "credit": "1278291.05"
+      }
+    ]
+  },
+  "sg_currency_text.xlsx": {
+    "currency": "SGD",
+    "entity": "Northwind Singapore",
+    "accounts": [
+      {
+        "code": "1000",
+        "debit": "412350.75",
+        "credit": "0"
+      },
+      {
+        "code": "1100",
+        "debit": "1204880.00",
+        "credit": "0"
+      },
+      {
+        "code": "1200",
+        "debit": "735420.10",
+        "credit": "0"
+      },
+      {
+        "code": "1600",
+        "debit": "3150000.00",
+        "credit": "0"
+      },
+      {
+        "code": "1650",
+        "debit": "0",
+        "credit": "412000.00"
+      },
+      {
+        "code": "2000",
+        "debit": "0",
+        "credit": "668940.25"
+      },
+      {
+        "code": "2100",
+        "debit": "0",
+        "credit": "215300.00"
+      },
+      {
+        "code": "2700",
+        "debit": "0",
+        "credit": "1500000.00"
+      },
+      {
+        "code": "3000",
+        "debit": "0",
+        "credit": "1000000.00"
+      },
+      {
+        "code": "4000",
+        "debit": "0",
+        "credit": "6842115.30"
+      },
+      {
+        "code": "5000",
+        "debit": "4380220.45",
+        "credit": "0"
+      },
+      {
+        "code": "6000",
+        "debit": "1890000.00",
+        "credit": "0"
+      },
+      {
+        "code": "6300",
+        "debit": "143775.30",
+        "credit": "0"
+      },
+      {
+        "code": "3100",
+        "debit": "0",
+        "credit": "1278291.05"
+      }
+    ]
+  },
+  "br_two_entities_stacked.xlsx": {
+    "currency": "BRL",
+    "entity": "Northwind Brasil (+ Chile stacked below)",
+    "accounts": [
+      {
+        "code": "1000",
+        "debit": "412350.75",
+        "credit": "0"
+      },
+      {
+        "code": "1100",
+        "debit": "1204880.00",
+        "credit": "0"
+      },
+      {
+        "code": "1200",
+        "debit": "735420.10",
+        "credit": "0"
+      },
+      {
+        "code": "1600",
+        "debit": "3150000.00",
+        "credit": "0"
+      },
+      {
+        "code": "1650",
+        "debit": "0",
+        "credit": "412000.00"
+      },
+      {
+        "code": "2000",
+        "debit": "0",
+        "credit": "668940.25"
+      },
+      {
+        "code": "2100",
+        "debit": "0",
+        "credit": "215300.00"
+      },
+      {
+        "code": "2700",
+        "debit": "0",
+        "credit": "1500000.00"
+      },
+      {
+        "code": "3000",
+        "debit": "0",
+        "credit": "1000000.00"
+      },
+      {
+        "code": "4000",
+        "debit": "0",
+        "credit": "6842115.30"
+      },
+      {
+        "code": "5000",
+        "debit": "4380220.45",
+        "credit": "0"
+      },
+      {
+        "code": "6000",
+        "debit": "1890000.00",
+        "credit": "0"
+      },
+      {
+        "code": "6300",
+        "debit": "143775.30",
+        "credit": "0"
+      },
+      {
+        "code": "3100",
+        "debit": "0",
+        "credit": "1278291.05"
+      }
+    ],
+    "note": "Contains a second entity below; a correct reader should not merge it into the first."
+  }
+}
