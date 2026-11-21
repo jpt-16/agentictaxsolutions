@@ -19,5 +19,9 @@
     "tenant:create": "pnpm --filter @taxops/services tenant-create",
     "worker:once": "cd services/agent-worker && ${PYTHON:-python3} -m taxops_agents --once",
     "notify:sweep": "pnpm --filter @taxops/services notify-sweep"
+  },
+  "dependencies": {
+    "@neon/config": "^1.14.6",
+    "@neon/env": "^2.1.9"
   }
 }
