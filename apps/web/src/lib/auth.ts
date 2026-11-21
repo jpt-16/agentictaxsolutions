@@ -2,9 +2,10 @@ import "server-only";
 import { cookies } from "next/headers";
 import { redirect } from "next/navigation";
 import { jwtVerify, SignJWT } from "jose";
-import { loadSession, type ServiceContext } from "@taxops/services";
+import { loadSession, revokeMySessions, type ServiceContext } from "@taxops/services";
 import { db } from "./db";
 import { checkAuthSecret } from "./auth-secret";
+import { isRevoked } from "./session-revocation";
 
 const COOKIE = "taxops_session";
 const MAX_AGE_SECONDS = 60 * 60 * 8;
@@ -40,7 +41,7 @@ function secretKey(): Uint8Array {
 
 export async function startSession(tenantId: string, userId: string) {
   assertAuthConfig();
-  const token = await new SignJWT({ tid: tenantId })
+  const token = await new SignJWT({ tid: tenantId, iatms: Date.now() })
     .setProtectedHeader({ alg: "HS256" })
     .setSubject(userId)
     .setIssuedAt()
@@ -51,7 +52,10 @@ export async function startSession(tenantId: string, userId: string) {
   });
 }
 
+/** Signs out: revokes every token this person holds on the server (best effort if it fails), then clears the cookie. */
 export async function endSession() {
+  const ctx = await getContext().catch(() => null);
+  if (ctx) await revokeMySessions(db, ctx.session.tenantId, ctx.session.userId, ctx.session.name).catch(() => undefined);
   (await cookies()).delete(COOKIE);
 }
 
@@ -63,7 +67,9 @@ export async function getContext(): Promise<ServiceContext | null> {
     const { payload } = await jwtVerify(token, secretKey(), { algorithms: ["HS256"] });
     if (!payload.sub || typeof payload.tid !== "string") return null;
     const session = await loadSession(db, payload.tid, payload.sub);
-    return session ? { db, session } : null;
+    if (!session) return null;
+    if (isRevoked(payload.iatms, session.tokensValidAfterMs)) return null; // signed out since this token was issued
+    return { db, session };
   } catch {
     return null;
   }

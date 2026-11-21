@@ -7,6 +7,7 @@ import os
 import signal
 import threading
 
+from .agents.documents import DocumentAgent
 from .agents.extraction import ExtractionAgent, RemapAgent
 from .agents.validation import ValidationAgent
 from .llm import build_gateway
@@ -32,6 +33,7 @@ def _load_repo_env() -> None:
 registry = AgentRegistry()
 registry.register(ExtractionAgent)
 registry.register(RemapAgent)
+registry.register(DocumentAgent)
 registry.register(ValidationAgent)
 
 

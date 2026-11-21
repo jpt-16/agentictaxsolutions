@@ -1,7 +1,7 @@
 import { and, asc, desc, eq, inArray, ne, sql, type SQL } from "drizzle-orm";
 import {
-  assertCan, can, decideProposalSchema, extractionPayloadSchema, findingPayloadSchema, InvalidTransitionError, remapSchema,
-  type ExtractionPayload, type FindingPayload, type ProposalStatus,
+  assertCan, can, decideProposalSchema, documentPayloadSchema, extractionPayloadSchema, findingPayloadSchema, InvalidTransitionError, remapSchema,
+  type DocumentPayload, type ExtractionPayload, type FindingPayload, type ProposalStatus,
 } from "@taxops/core";
 import {
   agentRuns, extractedRows, files, jobs, proposals, recordAudit, requestItems, requests, submissions, tenants, users, type Tx,
@@ -71,6 +71,7 @@ export async function getProposal(ctx: ServiceContext, proposalId: string, opts:
     }).from(extractedRows).where(eq(extractedRows.proposalId, p.id)).orderBy(asc(extractedRows.position)).limit(rowLimit).offset(rowOffset);
     const totalRows = (await tx.select({ n: sql<number>`count(*)::int` }).from(extractedRows).where(eq(extractedRows.proposalId, p.id)))[0]!.n;
     const parsed = p.kind === "extraction" ? extractionPayloadSchema.safeParse(p.payload) : null;
+    const parsedDoc = p.kind === "extraction" && p.schemaKey === "supporting_document" ? documentPayloadSchema.safeParse(p.payload) : null;
     const parsedFinding = p.kind === "finding" ? findingPayloadSchema.safeParse(p.payload) : null;
     const [source] = p.sourceProposalId ? await tx.select({ id: proposals.id, title: proposals.title }).from(proposals).where(eq(proposals.id, p.sourceProposalId)) : [];
     const findings = p.kind === "extraction" ? await findingsForSource(tx, p.id) : [];
@@ -80,6 +81,8 @@ export async function getProposal(ctx: ServiceContext, proposalId: string, opts:
       createdAt: p.createdAt, decidedAt: p.decidedAt, decidedByName: decider?.name ?? null, decisionNote: p.decisionNote,
       ruleId: p.ruleId,
       payload: parsed?.success ? (parsed.data as ExtractionPayload) : null, // null => payload did not match the contract
+      document: parsedDoc?.success ? (parsedDoc.data as DocumentPayload) : null,
+      isDocument: p.schemaKey === "supporting_document",
       finding: parsedFinding?.success ? (parsedFinding.data as FindingPayload) : null,
       source: source ?? null, findings,
       request: { id: req!.id, reference: req!.reference, title: req!.title },
@@ -143,7 +146,8 @@ export async function decideProposal(ctx: ServiceContext, proposalId: string, ra
     }).where(and(eq(proposals.id, proposalId), eq(proposals.status, "pending"))).returning({ id: proposals.id });
     if (updated.length === 0) throw new InvalidTransitionError(`This result was already ${p.status}.`);
     const [req] = await tx.select({ reference: requests.reference }).from(requests).where(eq(requests.id, p.requestId));
-    if (p.kind === "extraction" && input.decision === "accepted") {
+    // Validation rules exist only for trial balances; an accepted supporting document has nothing further to run.
+    if (p.kind === "extraction" && input.decision === "accepted" && (p.schemaKey ?? "trial_balance") === "trial_balance") {
       // Same transaction as the decision: validation runs only against data a person has accepted, and never gets lost.
       await tx.insert(jobs).values({
         tenantId: ctx.session.tenantId, type: "proposal.accepted",

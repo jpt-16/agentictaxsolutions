@@ -2,10 +2,10 @@
 import Link, { useLinkStatus } from "next/link";
 import { usePathname } from "next/navigation";
 import { useEffect, useRef, useState, type ReactNode } from "react";
-import { LayoutDashboard, FileText, History, Building2, Bot, Settings, Bell, Ellipsis, LogOut, type LucideIcon } from "lucide-react";
+import { LayoutDashboard, FileText, History, Building2, Bot, Settings, Bell, BarChart3, Ellipsis, LogOut, type LucideIcon } from "lucide-react";
 import { Avatar } from "./ui";
 
-const ICONS: Record<string, LucideIcon> = { dashboard: LayoutDashboard, requests: FileText, review: Bot, audit: History, directory: Building2, settings: Settings, notifications: Bell };
+const ICONS: Record<string, LucideIcon> = { dashboard: LayoutDashboard, requests: FileText, review: Bot, audit: History, directory: Building2, settings: Settings, notifications: Bell, reports: BarChart3 };
 export interface NavItem { href: string; label: string; short: string; icon: keyof typeof ICONS; badge?: number }
 
 const isActive = (pathname: string, href: string) => (href === "/" ? pathname === "/" : pathname.startsWith(href));

@@ -1,14 +1,14 @@
 import { notFound } from "next/navigation";
 import Link from "next/link";
 import { Bot, CalendarClock, ShieldAlert, Download, FileSpreadsheet, FileText, Info, Lock, MessageSquare, User2 } from "lucide-react";
-import { DATA_TYPE_LABELS, ROLE_LABELS } from "@taxops/core";
+import { can, DATA_TYPE_LABELS, ROLE_LABELS } from "@taxops/core";
 import { getRequestDetail, NotFoundError } from "@taxops/services";
 import { requireContext } from "@/lib/auth";
 import {
-  Avatar, Badge, Card, CardHeader, Chip, EmptyState, ItemStatusBadge, PageHeader, PriorityBadge, ProgressBar, SeverityBadge,
+  Avatar, Badge, Card, CardHeader, Chip, MentionText, EmptyState, ItemStatusBadge, PageHeader, PriorityBadge, ProgressBar, SeverityBadge,
   RequestStatusBadge, cn, dueLabel, formatDate, formatDateTime,
 } from "@/components/ui";
-import { CommentForm, RequestActions, ReviewForm, SubmitForm } from "./interactive";
+import { CommentForm, RequestActions, ReviewForm, SaveAsTemplate, SubmitForm } from "./interactive";
 import { ReprocessButton } from "../../review/reprocess";
 
 export const dynamic = "force-dynamic";
@@ -61,7 +61,7 @@ export default async function RequestPage({ params, searchParams }: {
             <span className="inline-flex items-center gap-1.5"><User2 size={14} aria-hidden /> Created by {r.createdByName}</span>
           </span>
         }
-        actions={<>{r.can.edit && <Link href={`/requests/${r.id}/edit`} className="btn btn-secondary">Edit draft</Link>}<RequestActions requestId={r.id} canPublish={r.can.publish} canClose={r.can.close} /></>}
+        actions={<>{r.can.edit && <Link href={`/requests/${r.id}/edit`} className="btn btn-secondary">Edit draft</Link>}<RequestActions requestId={r.id} canPublish={r.can.publish} canClose={r.can.close} />{can(ctx.session.role, "request.create") && <SaveAsTemplate requestId={r.id} defaultName={r.title.slice(0, 120)} />}</>}
       />
 
       {notice && (
@@ -169,7 +169,7 @@ export default async function RequestPage({ params, searchParams }: {
                     <div className="min-w-0">
                       <p className="text-[12.5px] text-muted"><span className="font-medium text-ink">{c.authorName}</span> · {ROLE_LABELS[c.authorRole]} · {formatDateTime(c.createdAt)}
                         {c.itemId && itemTitle.get(c.itemId) && <> · on “{itemTitle.get(c.itemId)}”</>}</p>
-                      <p className="mt-0.5 whitespace-pre-wrap text-[13.5px] text-body">{c.body}</p>
+                      <p className="mt-0.5 whitespace-pre-wrap text-[13.5px] text-body"><MentionText text={c.body} /></p>
                     </div>
                   </li>
                 ))}

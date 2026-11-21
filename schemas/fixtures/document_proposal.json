@@ -1,0 +1,33 @@
+{
+  "schema": "supporting_document",
+  "schema_version": "1.0",
+  "sheet": "Document",
+  "method": "heuristic",
+  "document_type": "Balance confirmation",
+  "summary": "",
+  "summary_source": "none",
+  "counterparty": "",
+  "period": "",
+  "key_amounts": [],
+  "facts": {
+    "amounts": [
+      "EUR 1,250,000.50"
+    ],
+    "dates": [
+      "31 December 2025",
+      "2025-11-30"
+    ],
+    "years": [
+      "2025"
+    ],
+    "signature_cues": 2
+  },
+  "stats": {
+    "chars": 196,
+    "pages": null,
+    "truncated": false
+  },
+  "excerpt": "Balance confirmation\nNorthwind GmbH confirms the balance owed to Northwind Holdings Inc. as at 31 December 2025 was EUR 1,250,000.50 (invoice dated 2025-11-30). Signed on behalf of Northwind GmbH.",
+  "notes": [],
+  "file_id": "00000000-0000-0000-0000-000000000000"
+}

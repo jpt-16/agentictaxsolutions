@@ -94,7 +94,7 @@ describe("schema introspection: isolation can't silently regress", () => {
       select p.proname, p.proconfig::text as cfg,
              exists (select 1 from aclexplode(coalesce(p.proacl, acldefault('f', p.proowner))) a where a.grantee = 0 and a.privilege_type = 'EXECUTE') as public_exec
         from pg_proc p where p.pronamespace = 'public'::regnamespace and p.prosecdef order by 1`);
-    expect(fns.map((f) => f.proname)).toEqual(expect.arrayContaining(["agent_get_file", "agent_save_results", "agent_get_proposal", "jobs_claim", "jobs_complete", "jobs_fail", "auth_resolve_user", "auth_dev_list_users", "ops_metrics", "proposals_notify"]));
+    expect(fns.map((f) => f.proname)).toEqual(expect.arrayContaining(["agent_get_file", "agent_save_results", "agent_get_proposal", "jobs_claim", "jobs_complete", "jobs_fail", "auth_resolve_user", "revoke_my_sessions", "ops_metrics", "proposals_notify"]));
     for (const f of fns) {
       expect(f.cfg, `${f.proname} must set search_path`).toContain("search_path");
       if (f.proname !== "proposals_notify") expect(f.public_exec, `${f.proname} must not be PUBLIC-executable`).toBe(false); // trigger functions are not callable directly
@@ -256,6 +256,7 @@ describe("write access is pinned to exactly what the application needs", () => {
       where grantee = 'taxops_app' and privilege_type = 'UPDATE' and table_schema = 'public' group by 1 order by 1`);
     expect(Object.fromEntries(cols.map((r) => [r.table_name, r.cols]))).toEqual({
       notifications: "read_at",
+      request_templates: "archived_at",
       proposals: "decided_at,decided_by,decision_note,status",
       request_items: "status,updated_at",
       requests: "closed_at,description,due_date,priority,published_at,status,tax_year,title,updated_at",

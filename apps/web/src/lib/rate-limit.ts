@@ -20,10 +20,22 @@ export class RateLimiter {
   }
 }
 
-/** Best-effort client address. X-Forwarded-For is only trustworthy behind a proxy you control that overwrites it. */
-export function clientKey(headers: { get(n: string): string | null }): string {
-  const xff = headers.get("x-forwarded-for")?.split(",")[0]?.trim();
-  return xff && xff.length <= 64 ? xff : headers.get("x-real-ip") ?? "unknown";
+/**
+ * Client address for rate limiting. X-Forwarded-For can be forged by the client, so it is only believed through proxies YOU run:
+ * TRUSTED_PROXY_HOPS is how many of them sit in front of the app. Each appends the address it saw, so the trustworthy entry is the
+ * one that many places from the RIGHT; anything the client put on the left is ignored. With 0 (the default, i.e. no proxy) the header
+ * is not trusted at all and all callers share one key ("direct"), which is safe but coarse: set the real hop count in production.
+ */
+export function clientKey(headers: { get(n: string): string | null }, hops: number = trustedProxyHops()): string {
+  if (hops <= 0) return "direct";
+  const parts = (headers.get("x-forwarded-for") ?? "").split(",").map((p) => p.trim()).filter(Boolean);
+  const entry = parts.length >= hops ? parts[parts.length - hops] : undefined;
+  return entry && entry.length <= 64 ? entry : "unknown";
+}
+
+export function trustedProxyHops(): number {
+  const n = Number.parseInt(process.env.TRUSTED_PROXY_HOPS ?? "0", 10);
+  return Number.isInteger(n) && n >= 0 && n <= 5 ? n : 0;
 }
 
 const g = globalThis as unknown as { __limiters?: Map<string, RateLimiter> };

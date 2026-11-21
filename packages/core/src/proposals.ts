@@ -36,6 +36,25 @@ export const extractionPayloadSchema = z.object({
 });
 export type ExtractionPayload = z.infer<typeof extractionPayloadSchema>;
 
+/** Payload of the document agent (PDF, Word, text). Untrusted: derived from user-uploaded documents. */
+export const documentPayloadSchema = z.object({
+  schema: z.literal("supporting_document"),
+  schema_version: z.string(),
+  method: z.enum(["heuristic", "llm"]),
+  document_type: z.string().max(100),
+  summary: z.string().max(1000),
+  summary_source: z.enum(["none", "llm"]),
+  counterparty: z.string().max(300),
+  period: z.string().max(100),
+  key_amounts: z.array(z.object({ label: z.string(), value: z.string() })).max(20),
+  facts: z.object({ amounts: z.array(z.string()), dates: z.array(z.string()), years: z.array(z.string()), signature_cues: z.number().int() }),
+  stats: z.object({ chars: z.number().int(), pages: z.number().int().nullable(), truncated: z.boolean() }),
+  excerpt: z.string().max(2000),
+  notes: z.array(z.string()),
+  file_id: z.string(),
+});
+export type DocumentPayload = z.infer<typeof documentPayloadSchema>;
+
 export const decideProposalSchema = z
   .object({
     decision: z.enum(["accepted", "rejected"]),

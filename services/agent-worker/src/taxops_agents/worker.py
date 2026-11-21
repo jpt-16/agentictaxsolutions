@@ -107,6 +107,8 @@ class Worker:
 
     def _run_agent(self, conn: psycopg.Connection, agent_cls: type[Agent], job: Job, files: JobFiles | None) -> None:
         payload = agent_cls.input_model.model_validate(job.payload)
+        if not agent_cls.accepts(payload):
+            return
         meta = files.meta() if files else None
         proposals = JobProposals(conn, job.id, self.worker_id) if "proposalId" in job.payload else None
         # Content only reaches an external model if the TENANT has opted in; otherwise the agent gets a gateway that refuses.

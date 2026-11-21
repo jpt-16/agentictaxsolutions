@@ -13,6 +13,7 @@ import type { StoredFile } from "./files/types";
 import { extractionByFile, findingsForRequest } from "./proposals";
 import { assigneesOfRequest, notify, usersWithPermission } from "./notifications";
 import { isPreviewable } from "./files/validate";
+import { mentionedUsers } from "./mentions";
 import { actorOf, auditActorOf, NotFoundError, scoped, todayOf, type ServiceContext } from "./context";
 
 /* ------------------------------------------------------------------ visibility */
@@ -419,6 +420,25 @@ export async function addComment(ctx: ServiceContext, requestId: string, rawInpu
       entityId: c!.id, requestRef: requestId, summary: `Commented on ${req.reference}`,
       after: { itemId: input.itemId ?? null, body: input.body },
     });
+    await notifyMentions(tx, ctx, { id: req.id, reference: req.reference, status: req.status }, c!.id, input.body);
+  });
+}
+
+/**
+ * @mentions: "@Dana Whitfield" notifies that person, but only if they can ALREADY see this request (a user with tenant-wide
+ * access, or an assignee of a published request). A mention can never reveal a request to someone who could not open it.
+ */
+async function notifyMentions(tx: Tx, ctx: ServiceContext, req: { id: string; reference: string; status: string }, commentId: string, body: string) {
+  if (!body.includes("@")) return;
+  const people = await tx.select({ id: users.id, name: users.name, role: users.role }).from(users).where(eq(users.isActive, true));
+  const mentioned = mentionedUsers(body, people).filter((u) => u.id !== ctx.session.userId);
+  if (mentioned.length === 0) return;
+  const assignees = new Set(req.status === "draft" ? [] : await assigneesOfRequest(tx, req.id));
+  const allowed = mentioned.filter((u) => can(u.role, "request.read.all") || assignees.has(u.id));
+  if (allowed.length === 0) return;
+  await notify(tx, ctx.session.tenantId, allowed.map((u) => u.id), {
+    type: "mention", title: `${ctx.session.name} mentioned you on ${req.reference}`, body: body.slice(0, 200),
+    link: `/requests/${req.id}`, dedupeKey: `mention:${commentId}`,
   });
 }
 

@@ -11,6 +11,7 @@ import { DecisionForm, SendBack } from "./decision";
 import { RemapForm } from "./remap-form";
 import { ReprocessButton } from "../reprocess";
 import { FindingView } from "./finding-view";
+import { DocumentView } from "./document-view";
 
 export const dynamic = "force-dynamic";
 export const metadata = { title: "Review AI result" };
@@ -67,7 +68,7 @@ export default async function ProposalPage({ params, searchParams }: { params: P
           AI processing is queued or running for this file. A refreshed result will replace this one when it is ready.
         </p>
       )}
-      {!pl && !isFinding && (
+      {!pl && !isFinding && !p.isDocument && (
         <p role="alert" className="mb-4 flex items-start gap-2 rounded-lg px-3.5 py-2.5 text-[13px]" style={{ background: "var(--red-bg)", color: "var(--red-fg)" }}>
           <ShieldAlert size={16} className="mt-0.5 flex-none" aria-hidden /> This result does not match the expected format and cannot be shown in detail. Reject it and ask for the file to be re-processed.
         </p>
@@ -76,6 +77,7 @@ export default async function ProposalPage({ params, searchParams }: { params: P
       <div className="grid gap-5 lg:grid-cols-[1fr_340px]">
         <div className="space-y-5">
           {isFinding && <FindingView p={p} />}
+          {p.document && <DocumentView doc={p.document} fileName={p.file.name} fileId={p.file.id} requestId={p.request.id} />}
           {pl && (
             <Card>
               <CardHeader title="What the agent read" subtitle={`Sheet “${pl.sheet}” · header on row ${pl.header_row}`} />
@@ -110,7 +112,7 @@ export default async function ProposalPage({ params, searchParams }: { params: P
             </Card>
           )}
 
-          {!isFinding && (<Card>
+          {!isFinding && !p.isDocument && (<Card>
             <CardHeader title="Standardized rows" subtitle={`${p.totalRows} rows · each links to its source row in the file`} />
             <div className="overflow-x-auto">
               <table className="tbl !text-[13px]">

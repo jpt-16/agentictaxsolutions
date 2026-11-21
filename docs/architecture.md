@@ -109,6 +109,14 @@ failing model never blocks a user request.
 | 4 | Validation agent (deterministic rules + LLM explanations), finding triage, approval | |
 | 5 | Hardening: permission/isolation suites, audit export, observability, notifications, SSO, administration | Done |
 
+## Document agent, reports, templates and mentions
+
+- **Document agent** (`services/agent-worker/.../agents/documents`): listens to `file.uploaded` for PDF/Word/text (it declines spreadsheets without recording a run). Text is read with bounded, defused parsers (PDF page/size caps, DTDs refused in Word files). Dates, amounts, years, signature wording and a document type come from plain patterns. If the tenant allows an external model it may add a summary, counterparty and period; **anything not literally present in the document text is discarded**. The result is an `extraction` proposal with `schema: supporting_document` that a person accepts or rejects; accepting it starts no validation. Its shape is pinned by `schemas/fixtures/document_proposal.json` on both sides.
+- **Validation rules** added: suspense/clearing balances, mostly-round balances, and intercompany balances to confirm (11 rules in total; each can be switched off or tuned in Settings).
+- **Reports** (`report.read`: tax manager, reviewer, auditor, tenant admin): status report with completion, time-to-close and on-time rate; CSV export; and a per-request **approved data pack** containing only data a person accepted, with source cells. Exports are `POST` + same-origin, rate limited, formula-neutralised and audited.
+- **Request templates**: a request's title and items (never assignees, dates or data) can be saved and reused. Tax managers only, enforced in the app and by a database trigger. Templates are archived, never deleted.
+- **@mentions** in comments notify the named person only if they can already see the request (tenant-wide roles, or an assignee of a published request), so a mention can never reveal a request.
+
 ## UI design system
 
 Web-first, following Apple's interface principles. All tokens live in `apps/web/src/app/globals.css`; re-skinning means changing tokens only.
@@ -141,15 +149,20 @@ Fixed, each with a regression test:
 | 14 | Low | `/api/ready` exposed queue depth anonymously | Returns status only |
 | 15 | Low | Notification trigger changed the transaction's tenant setting | Restores it |
 
-Accepted for now (documented below): #7 sign-out does not revoke existing tokens (8-hour lifetime, deactivation still immediate),
-#8 rate limits trust `X-Forwarded-For` (deploy behind a proxy that sets it), #16 the dev sign-in helper remains in the schema.
+The three items first accepted as known risks were fixed afterwards:
+
+| # | Severity | Finding | Fix |
+|---|---|---|---|
+| 7 | Low | Sign-out did not revoke a copied session token | Tokens carry their issue time; sign-out calls `revoke_my_sessions()`, which stamps `users.tokens_valid_after` (own row only), and every request rejects older tokens. This signs the person out on all their devices. |
+| 8 | Low | Rate limits trusted a client-forgeable `X-Forwarded-For` | The header is believed only through `TRUSTED_PROXY_HOPS` proxies you run (entry taken from the right); default 0 ignores it. Production refuses to start unless the variable is set. |
+| 16 | Low | The dev sign-in helper function shipped in the schema | Dropped by migration; `db:seed`/`db:reset` install it for local development only, so a production database never has it. |
 
 ## Known limitations (read before production)
 
 **Security and identity**
 - **Dev sign-in is passwordless** and must never be exposed (production refuses it). SSO is implemented and tested against a mock provider, **not against a real IdP**: verify claims (`email_verified`, issuer format, key rotation) with yours. There is no SCIM provisioning or group-to-role mapping yet; admins add people by email.
-- **Rate limiting is per server instance** (in memory) and keys on `X-Forwarded-For`, so it must sit behind a proxy that overwrites that header. Behind several instances, enforce limits at the edge or use a shared store.
-- **Sign-out does not revoke a copied session token** (it stays valid until its 8-hour expiry); deactivating the user cuts access immediately. A server-side session list would close this.
+- **Rate limiting is per server instance** (in memory). Set `TRUSTED_PROXY_HOPS` to match your deployment. Behind several instances, enforce limits at the edge or use a shared store.
+- **Sign-out revokes every session the person holds** (all devices), not just the current one; there is no per-device session list yet.
 - Contributor scoping is enforced in the service layer (tenant isolation is RLS). Pushing per-user scope into RLS is a candidate hardening step.
 - **The dev malware scanner is a stub** (EICAR only) and the ClamAV client was only tested against a fake clamd. Production refuses to start uploads without `CLAMAV_HOST`. Dev storage is unencrypted local disk; production needs object storage with KMS (`FileStorage`/`BlobStorage` are the seams). No retention/legal-hold policy yet.
 - Audit writes serialize per tenant (gap-free chain). Integrity verification is O(n) and on demand. The export is capped at 50,000 events per request.
@@ -157,10 +170,12 @@ Accepted for now (documented below): #7 sign-out does not revoke existing tokens
 
 **AI**
 - **The Gemini path has never run against the live API**; it is tested with a fake gateway only (hallucinated columns, prompt injection, redaction, number-guard on explanations). Confirm `GEMINI_MODEL` and your provider's retention terms first.
-- Extraction and validation cover **trial balances only**, with English and a few German header synonyms. The "usual side" rule assumes standard 1xxx-8xxx numbering and can be a false alarm (it says so). There is no cross-entity or year-over-year validation (intercompany, variance) yet.
+- Extraction and validation cover **trial balances only**, with English and a few German header synonyms. The "usual side" rule assumes standard 1xxx-8xxx numbering and can be a false alarm (it says so). Rules look at one file at a time: there is **no cross-entity or year-over-year validation** yet (it needs prior-period data and a cross-file data model). The intercompany rule only lists balances to confirm.
+- The **document agent** reads text-based PDF, Word and text files. Scanned PDFs have no text layer and are reported as unreadable (no OCR). It extracts facts for a person to check; it does not decide whether a document is genuine or signed.
 - Accepted data feeds validation but nothing downstream (returns, workpapers, ERP connectors) yet.
 
 **Product**
 - No email/push delivery for notifications (in-app only); the deadline sweep must be scheduled by the operator. The review queue lists proposals individually (no grouping by file). Tenant AI switches and rules apply from the next job.
+- Files are stored on local disk; there is **no object-storage (S3-compatible) adapter yet**. `FileStorage`/`BlobStorage` are the seams and the worker reads the same directory as the web app in dev.
 - The Python worker reads blobs from the same storage directory as the web app (local disk in dev).
 - `docker-compose.yml` and the CI workflow were written but **not executed in the authoring environment** (no Docker daemon). CI runs unit/integration suites; the two browser end-to-end scripts are run manually.

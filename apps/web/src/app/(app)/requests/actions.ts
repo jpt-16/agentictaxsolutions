@@ -1,7 +1,7 @@
 "use server";
 import { revalidatePath } from "next/cache";
 import {
-  addComment, closeRequest, createRequest, publishRequest, reviewItem, updateDraftRequest,
+  addComment, archiveTemplate, closeRequest, createRequest, createTemplateFromRequest, publishRequest, reviewItem, updateDraftRequest,
 } from "@taxops/services";
 import { requireContext } from "@/lib/auth";
 import { guard, type ActionResult } from "@/lib/actions";
@@ -72,4 +72,18 @@ export async function updateDraftAction(
   }
   refresh(requestId);
   return { ok: true, data: { id: requestId, reference: saved.data!.reference, publishError } };
+}
+
+export async function saveTemplateAction(requestId: string, name: string): Promise<ActionResult> {
+  const ctx = await requireContext();
+  const r = await guard(() => createTemplateFromRequest(ctx, requestId, name));
+  if (r.ok) revalidatePath("/requests/new");
+  return r.ok ? { ok: true } : r;
+}
+
+export async function archiveTemplateAction(templateId: string): Promise<ActionResult> {
+  const ctx = await requireContext();
+  const r = await guard(() => archiveTemplate(ctx, templateId));
+  revalidatePath("/requests/new");
+  return r;
 }

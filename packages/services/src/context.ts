@@ -10,6 +10,8 @@ export interface Session {
   email: string;
   departmentId: string | null;
   entityId: string | null;
+  /** Session tokens issued before this time (ms since epoch) are void; null = none revoked. */
+  tokensValidAfterMs: number | null;
 }
 
 export interface ServiceContext {

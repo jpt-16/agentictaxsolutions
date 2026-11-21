@@ -33,6 +33,9 @@ RULES: tuple[RuleSpec, ...] = (
     RuleSpec("tb_unusual_side", "Balances sit on their usual side", "Flags accounts whose balance is on the opposite side to what their account number range suggests (assumes standard 1xxx-8xxx numbering).", "warning", 0.6, {"min_amount": "0"}),
     RuleSpec("tb_extraction_gaps", "Extraction is complete", "Flags unreadable amounts and a sheet total row that disagrees with the rows read.", "warning", 0.9),
     RuleSpec("tb_sparse", "Plausible size", "Flags very small or all-zero trial balances.", "info", 0.8, {"min_rows": "5"}),
+    RuleSpec("tb_suspense_balances", "No balances left in suspense", "Flags non-zero balances in suspense, clearing or unreconciled accounts, which should be cleared before the numbers are relied on.", "warning", 0.85, {"min_amount": "0"}),
+    RuleSpec("tb_round_amounts", "Few round-number balances", "Flags trial balances where many balances are exact multiples of 1,000, which can indicate estimates or manual plugs.", "info", 0.55, {"min_rows": "10", "share_percent": "60", "multiple": "1000"}),
+    RuleSpec("tb_intercompany_balances", "Intercompany balances to confirm", "Lists intercompany accounts with a balance so they can be agreed with the counterparty entity, and shows their net position.", "info", 0.8, {"min_amount": "0"}),
 )
 RULE_BY_ID = {r.id: r for r in RULES}
 SEVERITY_ORDER = {"error": 0, "warning": 1, "info": 2}
@@ -236,10 +239,59 @@ def tb_sparse(d: TBData, p: dict[str, Any]) -> list[Draft]:
     return out
 
 
+_SUSPENSE = re.compile(r"suspense|clearing|unreconciled|unallocated|unapplied|to be classified|tbc\b", re.IGNORECASE)
+_INTERCO = re.compile(r"inter[\s-]?company|intra[\s-]?group|due (?:to|from) (?:affiliate|related|group)|affiliate receivable|affiliate payable", re.IGNORECASE)
+
+
+def tb_suspense_balances(d: TBData, p: dict[str, Any]) -> list[Draft]:
+    floor = _dec(p, "min_amount", "0")
+    bad = [r for r in d.rows if _SUSPENSE.search(r.name) and abs(r.amount("debit") - r.amount("credit")) > floor]
+    if not bad:
+        return []
+    total = sum((abs(r.amount("debit") - r.amount("credit")) for r in bad), Decimal(0))
+    return [Draft("tb_suspense_balances", RULE_BY_ID["tb_suspense_balances"].severity, f"{len(bad)} suspense or clearing account(s) hold a balance",
+                  "Balances remain in: " + "; ".join(f"{r.code} {r.name}".strip() for r in bad[:5]) + ("…" if len(bad) > 5 else "") + f". Combined absolute balance {grouped(total)}.",
+                  "Clear these to the correct accounts, or document why they remain open at period end.", d.sheet,
+                  {"count": len(bad), "total_abs": fmt(total)}, [_ev(r, "Balance held in a suspense/clearing account") for r in bad[:10]])]
+
+
+def tb_round_amounts(d: TBData, p: dict[str, Any]) -> list[Draft]:
+    min_rows = int(_dec(p, "min_rows", "10"))
+    mult = _dec(p, "multiple", "1000")
+    share = _dec(p, "share_percent", "60")
+    if mult <= 0:
+        return []
+    amounts = [(r, a) for r in d.rows for a in (r.amount("debit"), r.amount("credit")) if a != 0]
+    if len(amounts) < min_rows:
+        return []
+    round_n = sum(1 for _, a in amounts if a % mult == 0)
+    pct = Decimal(round_n) * 100 / Decimal(len(amounts))
+    if pct < share:
+        return []
+    return [Draft("tb_round_amounts", RULE_BY_ID["tb_round_amounts"].severity, f"{round_n} of {len(amounts)} balances are exact multiples of {grouped(mult)}",
+                  f"{round_n} of {len(amounts)} non-zero balances ({pct.quantize(Decimal(1))}%) are exact multiples of {grouped(mult)}.",
+                  "Real ledger balances are rarely this round. Confirm the figures are not estimates, rounded exports or manual plugs.", d.sheet,
+                  {"round": round_n, "total": len(amounts), "multiple": fmt(mult), "percent": str(pct.quantize(Decimal(1)))}, [])]
+
+
+def tb_intercompany_balances(d: TBData, p: dict[str, Any]) -> list[Draft]:
+    floor = _dec(p, "min_amount", "0")
+    rows = [r for r in d.rows if _INTERCO.search(r.name) and abs(r.amount("debit") - r.amount("credit")) > floor]
+    if not rows:
+        return []
+    net = sum((r.amount("debit") - r.amount("credit") for r in rows), Decimal(0))
+    side = "net debit" if net > 0 else "net credit" if net < 0 else "nets to zero"
+    return [Draft("tb_intercompany_balances", RULE_BY_ID["tb_intercompany_balances"].severity, f"{len(rows)} intercompany balance(s) to confirm",
+                  f"Intercompany accounts hold balances ({side}{'' if net == 0 else ' ' + grouped(abs(net))}): " + "; ".join(f"{r.code} {r.name}".strip() for r in rows[:5]) + ("…" if len(rows) > 5 else "") + ".",
+                  "Agree each balance with the counterparty entity. A single entity's intercompany accounts need not net to zero; the group's should.", d.sheet,
+                  {"count": len(rows), "net": fmt(net)}, [_ev(r, "Intercompany balance") for r in rows[:10]])]
+
+
 CHECKS = {
     "tb_footing": tb_footing, "tb_duplicate_accounts": tb_duplicate_accounts, "tb_missing_identifiers": tb_missing_identifiers,
     "tb_both_sides": tb_both_sides, "tb_negative_amounts": tb_negative_amounts, "tb_unusual_side": tb_unusual_side,
     "tb_extraction_gaps": tb_extraction_gaps, "tb_sparse": tb_sparse,
+    "tb_suspense_balances": tb_suspense_balances, "tb_round_amounts": tb_round_amounts, "tb_intercompany_balances": tb_intercompany_balances,
 }
 
 

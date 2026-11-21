@@ -1,4 +1,5 @@
 import { describe, expect, it } from "vitest";
+import { isRevoked } from "./session-revocation";
 import { formatLog, requestIdFrom, sanitize } from "./log";
 import { renderMetrics } from "./metrics";
 import { RateLimiter, clientKey } from "./rate-limit";
@@ -49,10 +50,22 @@ describe("rate limiter", () => {
     for (let i = 0; i < 1000; i++) rl.hit(`k${i}`);
     expect((rl as unknown as { hits: Map<string, number[]> }).hits.size).toBeLessThanOrEqual(101);
   });
-  it("derives a client key from forwarding headers, ignoring absurd values", () => {
+  it("only believes forwarding headers through the configured number of trusted proxies", () => {
     const h = (m: Record<string, string>) => ({ get: (n: string) => m[n] ?? null });
-    expect(clientKey(h({ "x-forwarded-for": "203.0.113.9, 10.0.0.1" }))).toBe("203.0.113.9");
-    expect(clientKey(h({ "x-real-ip": "198.51.100.2" }))).toBe("198.51.100.2");
-    expect(clientKey(h({ "x-forwarded-for": "x".repeat(300) }))).toBe("unknown");
+    expect(clientKey(h({ "x-forwarded-for": "6.6.6.6" }), 0)).toBe("direct");                              // no proxy: header is ignored entirely
+    expect(clientKey(h({ "x-forwarded-for": "6.6.6.6, 203.0.113.9" }), 1)).toBe("203.0.113.9");           // forged left entry is ignored
+    expect(clientKey(h({ "x-forwarded-for": "6.6.6.6, 203.0.113.9, 10.0.0.1" }), 2)).toBe("203.0.113.9");
+    expect(clientKey(h({}), 1)).toBe("unknown");
+    expect(clientKey(h({ "x-forwarded-for": "x".repeat(300) }), 1)).toBe("unknown");
+  });
+});
+
+describe("session revocation", () => {
+  it("voids tokens issued before a sign-out, including tokens with no issue time", () => {
+    expect(isRevoked(1000, null)).toBe(false);          // never signed out
+    expect(isRevoked(2000, 1500)).toBe(false);          // issued after the sign-out
+    expect(isRevoked(1000, 1500)).toBe(true);           // issued before it
+    expect(isRevoked(undefined, 1500)).toBe(true);      // legacy token
+    expect(isRevoked("2000", 1500)).toBe(true);         // wrong type is never trusted
   });
 });

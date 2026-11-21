@@ -2,7 +2,10 @@ import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import { randomUUID } from "node:crypto";
 import { sql } from "drizzle-orm";
 import { connect, withTenant, withoutTenant, type Connection } from "./client";
+import { readdirSync, readFileSync } from "node:fs";
+import { resolve } from "node:path";
 import { recordAudit, verifyAuditChain } from "./audit";
+import { installDevLogin } from "./dev-login";
 import * as s from "./schema";
 import { createTestTenant, TEST_APP_URL, TEST_OWNER_URL, type TestTenant } from "./testing";
 
@@ -131,10 +134,30 @@ describe("least privilege for the app role", () => {
     await expectDbError(app.db.execute(sql`alter table requests disable row level security`), /must be owner/i);
   });
 
-  it("cannot call dev-login helper unless dev login is enabled", async () => {
-    await expectDbError(withoutTenant(app.db, {}, (tx) => tx.execute(sql`select * from auth_dev_list_users(${A.slug})`)), /disabled/);
-    const rows = await withoutTenant(app.db, { allowDevLogin: true }, (tx) => tx.execute(sql`select * from auth_dev_list_users(${A.slug})`));
-    expect(rows.rows).toHaveLength(5);
+  it("the dev-login helper is not part of the migrations, and when installed for development it still refuses unless enabled", async () => {
+    // Replay the migrations in order: whatever the last mention of the function does decides whether a fresh database has it.
+    const dir = resolve(__dirname, "../migrations");
+    const last = readdirSync(dir).filter((f) => f.endsWith(".sql")).sort().filter((f) => readFileSync(resolve(dir, f), "utf8").includes("auth_dev_list_users")).pop()!;
+    expect(readFileSync(resolve(dir, last), "utf8")).toMatch(/DROP FUNCTION IF EXISTS auth_dev_list_users/);
+    await installDevLogin(owner.db);
+    try {
+      await expectDbError(withoutTenant(app.db, {}, (tx) => tx.execute(sql`select * from auth_dev_list_users(${A.slug})`)), /disabled/);
+      const rows = await withoutTenant(app.db, { allowDevLogin: true }, (tx) => tx.execute(sql`select * from auth_dev_list_users(${A.slug})`));
+      expect(rows.rows).toHaveLength(5);
+    } finally {
+      await owner.db.execute(sql`drop function if exists auth_dev_list_users(text)`);
+    }
+  });
+
+  it("sign-out revocation: a person can void only their own tokens, and cannot write the column directly", async () => {
+    const own = (id: string) => ({ tenantId: A.tenantId, userId: id });
+    const stamp = async (id: string) => ((await owner.db.execute(sql`select tokens_valid_after as t from users where id = ${id}`)).rows[0] as { t: Date | null }).t;
+    expect(await stamp(A.users.manager)).toBeNull();
+    await withTenant(app.db, own(A.users.manager), (tx) => tx.execute(sql`select revoke_my_sessions()`));
+    expect(await stamp(A.users.manager)).not.toBeNull();
+    expect(await stamp(A.users.reviewer)).toBeNull();                       // nobody else is signed out
+    await expectDbError(withTenant(app.db, own(A.users.manager), (tx) => tx.execute(sql`update users set tokens_valid_after = null where id = ${A.users.manager}`)), /permission denied/i);
+    await expectDbError(withTenant(app.db, { tenantId: A.tenantId }, (tx) => tx.execute(sql`select revoke_my_sessions()`)), /no signed-in user/);
   });
 
   it("resolves a user by email for login without exposing other columns", async () => {

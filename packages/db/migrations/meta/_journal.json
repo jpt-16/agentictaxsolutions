@@ -78,6 +78,34 @@
       "when": 1795200118186,
       "tag": "0010_audit_fixes",
       "breakpoints": true
+    },
+    {
+      "idx": 11,
+      "version": "7",
+      "when": 1795280424161,
+      "tag": "0011_worthless_the_liberteens",
+      "breakpoints": true
+    },
+    {
+      "idx": 12,
+      "version": "7",
+      "when": 1795280424923,
+      "tag": "0012_templates_security",
+      "breakpoints": true
+    },
+    {
+      "idx": 13,
+      "version": "7",
+      "when": 1795280629694,
+      "tag": "0013_overjoyed_bromley",
+      "breakpoints": true
+    },
+    {
+      "idx": 14,
+      "version": "7",
+      "when": 1795280630514,
+      "tag": "0014_session_revocation_dev_login",
+      "breakpoints": true
     }
   ]
 }

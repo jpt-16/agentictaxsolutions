@@ -17,6 +17,7 @@ export default async function AppLayout({ children }: { children: React.ReactNod
     { href: "/requests", label: "Information requests", short: "Requests", icon: "requests" },
     ...(can(role, "proposal.read") ? [{ href: "/review", label: "AI review", short: "Review", icon: "review", badge: pending } as NavItem] : []),
     { href: "/notifications", label: "Notifications", short: "Alerts", icon: "notifications", badge: unread },
+    ...(can(role, "report.read") ? [{ href: "/reports", label: "Reports", short: "Reports", icon: "reports" } as NavItem] : []),
     ...(can(role, "audit.read") ? [{ href: "/audit", label: "Audit history", short: "Audit", icon: "audit" } as NavItem] : []),
     ...(can(role, "user.read") ? [{ href: "/directory", label: "Directory", short: "Directory", icon: "directory" } as NavItem] : []),
     ...(can(role, "rules.manage") || can(role, "tenant.admin") ? [{ href: "/settings", label: "Settings", short: "Settings", icon: "settings" } as NavItem] : []),

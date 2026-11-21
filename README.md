@@ -14,7 +14,9 @@ phases) have AI agents standardize and validate it, with human review and a tamp
 - Role-based access (5 roles) plus attribute-based scoping (contributors only see what is assigned to them)
 - Segregation of duties (no self-review), tenant isolation enforced in Postgres (RLS)
 - Append-only, hash-chained audit history with an integrity verifier
-- Python agent runtime foundation (agent contract, registry, Gemini gateway with redaction), not yet wired to jobs
+- AI agents (Python worker): trial-balance extraction, rule-based validation (11 rules) and a document reader for PDF/Word/text; every AI result is reviewed and accepted or rejected by a person
+- Reports and CSV exports (status report, approved data pack), request templates, @mentions, notifications, SSO, audit export
+- Sample files for trying it: see `samples/README.md`
 
 ## Quick start
 
@@ -80,7 +82,7 @@ The database tests run against a separate `taxops_test` database that they reset
 | `packages/core` | Pure domain: roles, permissions, status machine, validation schemas |
 | `packages/db` | Drizzle schema, SQL migrations (RLS, audit trigger), tenant-scoped connection helper |
 | `packages/services` | Use cases: authorization + scoping + state transitions + audit, in one transaction |
-| `services/agent-worker` | Python agent runtime: contract, registry, LLM gateway |
+| `services/agent-worker` | Python agent runtime: contract, registry, LLM gateway, extraction / validation / document agents |
 | `docs/architecture.md` | Decisions, security model, data model, roadmap, known limitations |
 
 See [docs/architecture.md](docs/architecture.md) before changing anything security-relevant.

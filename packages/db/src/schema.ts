@@ -78,6 +78,8 @@ export const users = pgTable(
     departmentId: uuid("department_id"),
     entityId: uuid("entity_id"),
     isActive: boolean("is_active").notNull().default(true),
+    /** Session tokens issued before this instant are void (sign-out revokes server-side; see revoke_my_sessions()). */
+    tokensValidAfter: timestamp("tokens_valid_after", { withTimezone: true }),
     createdAt: createdAt(),
   },
   (t) => [
@@ -438,5 +440,29 @@ export const notifications = pgTable(
     foreignKey({ columns: [t.tenantId, t.userId], foreignColumns: [users.tenantId, users.id], name: "notifications_user_fk" }),
     unique("notifications_dedupe").on(t.tenantId, t.userId, t.dedupeKey),
     index("notifications_inbox").on(t.tenantId, t.userId, t.readAt, t.createdAt),
+  ],
+);
+
+/**
+ * Reusable request blueprints (title, description and items only; never assignees, dates or data). Created from an existing
+ * request; archived rather than deleted so the audit trail can always explain where a request's items came from.
+ */
+export const requestTemplates = pgTable(
+  "request_templates",
+  {
+    id: id(),
+    tenantId: tenantId().references(() => tenants.id),
+    name: text("name").notNull(),
+    description: text("description").notNull().default(""),
+    items: jsonb("items").notNull(), // [{ title, description, dataType, required }], validated by the app on write and on read
+    createdBy: uuid("created_by").notNull(),
+    createdAt: createdAt(),
+    archivedAt: timestamp("archived_at", { withTimezone: true }),
+  },
+  (t) => [
+    foreignKey({ columns: [t.tenantId, t.createdBy], foreignColumns: [users.tenantId, users.id], name: "request_templates_user_fk" }),
+    check("request_templates_name_len", sql`char_length(${t.name}) between 3 and 120`),
+    check("request_templates_items_array", sql`jsonb_typeof(${t.items}) = 'array' AND jsonb_array_length(${t.items}) between 1 and 100`),
+    index("request_templates_list").on(t.tenantId, t.archivedAt, t.name),
   ],
 );

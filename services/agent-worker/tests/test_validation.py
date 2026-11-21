@@ -181,3 +181,37 @@ def test_display_figures_are_grouped_but_metrics_stay_exact():
     f = run(source(spec))[0].proposals[0]
     assert f.title == "Debits and credits differ by 11,450" and "1,250,000" in f.detail
     assert f.payload["metrics"]["difference"] == "11450" and f.payload["metrics"]["total_debit"] == "1250000"
+
+
+def test_suspense_balances_are_flagged_but_zero_balances_are_not():
+    spec = [*GOOD[:-1], ("1999", "Suspense account", 25, 0), ("5000", "Cost of sales", 125, 0)]  # debits 300 = credits... keep footing: 100+50+25+125
+    res = run(source(spec))[0]
+    assert "tb_suspense_balances" in rule_ids(res)
+    f = next(p for p in res.proposals if p.rule_id == "tb_suspense_balances")
+    assert f.payload["metrics"]["total_abs"] == "25" and f.evidence
+    clear = [*GOOD[:-1], ("1999", "Clearing account", 0, 0), ("5000", "Cost of sales", 150, 0)]
+    assert "tb_suspense_balances" not in rule_ids(run(source(clear))[0])
+
+
+def test_round_amounts_needs_enough_rows_and_a_high_share():
+    many = [(f"{1000 + i}", f"Account {i}", 1000 * (i + 1), 0) for i in range(9)] + [("2000", "Payables", 0, 45000)]
+    res = run(source(many))[0]
+    assert "tb_round_amounts" in rule_ids(res)
+    assert next(p for p in res.proposals if p.rule_id == "tb_round_amounts").payload["metrics"]["round"] == 10
+    assert "tb_round_amounts" not in rule_ids(run(source(GOOD))[0])  # too few rows to judge
+    irregular = [(f"{1000 + i}", f"Account {i}", 1000 * (i + 1) + 7, 0) for i in range(9)] + [("2000", "Payables", 0, 45063)]
+    assert "tb_round_amounts" not in rule_ids(run(source(irregular))[0])
+
+
+def test_intercompany_balances_listed_with_their_net_position():
+    spec = [*GOOD[:-1], ("1500", "Intercompany receivable - Northwind GmbH", 30, 0), ("2500", "Intercompany payable - Northwind SAS", 0, 10), ("5000", "Cost of sales", 120, 0)]
+    res = run(source(spec))[0]
+    f = next(p for p in res.proposals if p.rule_id == "tb_intercompany_balances")
+    assert f.severity == "info" and f.payload["metrics"] == {"count": 2, "net": "20"}
+    assert "tb_intercompany_balances" not in rule_ids(run(source(GOOD))[0])
+
+
+def test_new_rules_can_be_switched_off():
+    spec = [*GOOD[:-1], ("1999", "Suspense", 25, 0), ("5000", "Cost of sales", 125, 0)]
+    res = run(source(spec, settings={"tb_suspense_balances": {"enabled": False}}))[0]
+    assert "tb_suspense_balances" not in rule_ids(res)

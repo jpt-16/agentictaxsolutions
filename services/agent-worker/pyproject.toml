@@ -3,7 +3,7 @@ name = "taxops-agents"
 version = "0.0.0"
 description = "AI agent runtime for the Tax Operations platform (extraction, validation, and future agents)."
 requires-python = ">=3.11"
-dependencies = ["pydantic>=2.7", "psycopg[binary]>=3.2", "openpyxl>=3.1", "defusedxml>=0.7"]  # defusedxml: openpyxl uses it to refuse XML entity attacks
+dependencies = ["pydantic>=2.7", "psycopg[binary]>=3.2", "openpyxl>=3.1", "defusedxml>=0.7", "pypdf>=5.0"]  # defusedxml: openpyxl uses it to refuse XML entity attacks
 
 [project.optional-dependencies]
 gemini = ["google-genai>=1.0"]

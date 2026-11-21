@@ -1,9 +1,9 @@
 "use client";
 import { useRef, useState, useTransition } from "react";
 import { useRouter } from "next/navigation";
-import { Check, MessageSquarePlus, Paperclip, RotateCcw, Send, X } from "lucide-react";
+import { Check, LayoutTemplate, MessageSquarePlus, Paperclip, RotateCcw, Send, X } from "lucide-react";
 import { useConfirm, useToast } from "@/components/overlays";
-import { addCommentAction, closeRequestAction, publishRequestAction, reviewItemAction } from "../actions";
+import { addCommentAction, closeRequestAction, publishRequestAction, reviewItemAction, saveTemplateAction } from "../actions";
 
 function ErrorLine({ msg }: { msg: string | null }) {
   return msg ? <p role="alert" className="mt-2 text-[12.5px]" style={{ color: "var(--red-fg)" }}>{msg}</p> : null;
@@ -144,11 +144,33 @@ export function CommentForm({ requestId }: { requestId: string }) {
     <form className="border-t border-line p-4"
       onSubmit={(e) => { e.preventDefault(); setError(null); start(async () => { const r = await addCommentAction(requestId, body); if (!r.ok) setError(r.error); else setBody(""); }); }}>
       <label className="label" htmlFor="comment">Add a comment</label>
-      <textarea id="comment" className="field" value={body} onChange={(e) => setBody(e.target.value)} maxLength={4000} placeholder="Ask a question or leave a note for the team." />
+      <textarea id="comment" className="field" value={body} onChange={(e) => setBody(e.target.value)} maxLength={4000} placeholder="Ask a question or leave a note. Type @ and a full name to notify someone." />
       <div className="mt-2 flex justify-end">
         <button type="submit" className="btn btn-secondary btn-sm" disabled={pending || !body.trim()}><MessageSquarePlus size={13} aria-hidden /> {pending ? "Posting…" : "Post comment"}</button>
       </div>
       <ErrorLine msg={error} />
+    </form>
+  );
+}
+
+/** Saves this request's items as a reusable template (never its assignees, dates or data). */
+export function SaveAsTemplate({ requestId, defaultName }: { requestId: string; defaultName: string }) {
+  const [open, setOpen] = useState(false);
+  const [name, setName] = useState(defaultName);
+  const [error, setError] = useState<string | null>(null);
+  const [pending, start] = useTransition();
+  const toast = useToast();
+  if (!open) return <button type="button" className="btn btn-secondary" onClick={() => setOpen(true)}><LayoutTemplate size={14} aria-hidden /> Save as template</button>;
+  return (
+    <form className="flex flex-wrap items-center gap-2" onSubmit={(e) => {
+      e.preventDefault(); setError(null);
+      start(async () => { const r = await saveTemplateAction(requestId, name); if (r.ok) { toast("Template saved"); setOpen(false); } else setError(r.error); });
+    }}>
+      <label className="sr-only" htmlFor="tpl-name">Template name</label>
+      <input id="tpl-name" className="field !w-56" value={name} onChange={(e) => setName(e.target.value)} maxLength={120} autoFocus aria-invalid={error ? true : undefined} />
+      <button className="btn btn-primary" disabled={pending} type="submit">{pending ? "Saving…" : "Save"}</button>
+      <button className="btn btn-ghost" type="button" onClick={() => setOpen(false)}>Cancel</button>
+      {error && <span role="alert" className="text-[12.5px]" style={{ color: "var(--red-fg)" }}>{error}</span>}
     </form>
   );
 }

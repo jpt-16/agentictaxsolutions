@@ -74,6 +74,11 @@ const OPS: Op[] = [
   { name: "requestRemap", perm: "proposal.review", run: (c, w) => S.requestRemap(c, w.extId, MAP) },
   { name: "reprocessFile", perm: "proposal.review", run: (c, w) => S.reprocessFile(c, w.fileId) },
   { name: "requestChangesFromFinding", perm: "proposal.review", run: (c, w) => S.requestChangesFromFinding(c, w.findingId) },
+  { name: "createTemplateFromRequest", perm: "request.create", run: (c, w) => S.createTemplateFromRequest(c, w.f.requestId, `Matrix template ${randomUUID().slice(0, 6)}`) },
+  { name: "listTemplates", perm: "request.create", run: (c) => S.listTemplates(c) },
+  { name: "requestStatusReport", perm: "report.read", run: (c) => S.requestStatusReport(c) },
+  { name: "exportStatusReportCsv", perm: "report.read", run: (c) => S.exportStatusReportCsv(c) },
+  { name: "approvedDataPack", perm: "report.read", run: (c, w) => S.approvedDataPack(c, w.f.requestId) },
   { name: "listRules", perm: "proposal.read", run: (c) => S.listRules(c) },
   { name: "updateRule", perm: "rules.manage", run: (c) => S.updateRule(c, "tb_footing", { enabled: true }) },
   { name: "getTenantSettings", perm: "tenant.admin", run: (c) => S.getTenantSettings(c) },
@@ -124,7 +129,7 @@ describe("role × operation matrix (every gated operation, every role)", () => {
 });
 
 describe("cross-tenant matrix (tenant B's people against tenant A's objects)", () => {
-  const targeted = OPS.filter((o) => !["createRequest", "listAudit", "exportAudit", "verifyAuditTrail", "listDirectory", "listProposals", "listRules", "updateRule", "getTenantSettings", "updateTenantSettings", "listUsers", "createUser", "listRequests", "getDashboard", "listNotifications"].includes(o.name));
+  const targeted = OPS.filter((o) => !["createRequest", "listAudit", "exportAudit", "verifyAuditTrail", "listDirectory", "listProposals", "listTemplates", "requestStatusReport", "exportStatusReportCsv", "listRules", "updateRule", "getTenantSettings", "updateTenantSettings", "listUsers", "createUser", "listRequests", "getDashboard", "listNotifications"].includes(o.name));
   for (const op of targeted) {
     it(`${op.name} cannot reach another tenant's objects, whatever the role`, async () => {
       const w = await world();

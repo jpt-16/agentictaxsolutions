@@ -60,5 +60,34 @@
     "params": {
       "min_rows": "5"
     }
+  },
+  {
+    "id": "tb_suspense_balances",
+    "name": "No balances left in suspense",
+    "description": "Flags non-zero balances in suspense, clearing or unreconciled accounts, which should be cleared before the numbers are relied on.",
+    "severity": "warning",
+    "params": {
+      "min_amount": "0"
+    }
+  },
+  {
+    "id": "tb_round_amounts",
+    "name": "Few round-number balances",
+    "description": "Flags trial balances where many balances are exact multiples of 1,000, which can indicate estimates or manual plugs.",
+    "severity": "info",
+    "params": {
+      "min_rows": "10",
+      "share_percent": "60",
+      "multiple": "1000"
+    }
+  },
+  {
+    "id": "tb_intercompany_balances",
+    "name": "Intercompany balances to confirm",
+    "description": "Lists intercompany accounts with a balance so they can be agreed with the counterparty entity, and shows their net position.",
+    "severity": "info",
+    "params": {
+      "min_amount": "0"
+    }
   }
 ]

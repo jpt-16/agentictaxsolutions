@@ -141,3 +141,9 @@ export function SeverityBadge({ severity }: { severity: "info" | "warning" | "er
   const tone = severity === "error" ? "red" : severity === "warning" ? "amber" : "slate";
   return <Badge tone={tone} dot>{severity === "error" ? "Error" : severity === "warning" ? "Warning" : "Info"}</Badge>;
 }
+
+/** Comment text with @mentions emphasised. Purely visual: React escapes everything, nothing is parsed as HTML. */
+export function MentionText({ text }: { text: string }) {
+  const parts = text.split(/(@[\p{Lu}][\p{L}'’-]*(?: [\p{Lu}][\p{L}'’-]*)?)/u);
+  return <>{parts.map((p, i) => (i % 2 === 1 ? <span key={i} className="rounded px-0.5 font-medium" style={{ background: "var(--accent-soft)", color: "var(--accent)" }}>{p}</span> : p))}</>;
+}

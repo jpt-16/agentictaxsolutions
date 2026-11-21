@@ -4,7 +4,7 @@ import { resolve } from "node:path";
 import {
   assertCan, assertCanClose, assertCanPublish, assertItemTransition, canViewRequest, can, daysUntil,
   deriveRequestStatus, isOverdue, violatesSegregationOfDuties, createRequestSchema, reviewItemSchema,
-  ForbiddenError, InvalidTransitionError, type Actor, extractionPayloadSchema, decideProposalSchema, confidenceBand, VALIDATION_RULES, parseRuleParams, findingPayloadSchema, proposalStatusLabel, remapSchema,
+  ForbiddenError, InvalidTransitionError, type Actor, extractionPayloadSchema, documentPayloadSchema, decideProposalSchema, confidenceBand, VALIDATION_RULES, parseRuleParams, findingPayloadSchema, proposalStatusLabel, remapSchema,
 } from "./index";
 
 const actor = (over: Partial<Actor> = {}): Actor => ({
@@ -198,5 +198,18 @@ describe("audit #3: optional items", () => {
   });
   it("required items still block, as before", () => {
     expect(deriveRequestStatus("in_progress", [req("approved"), req("pending")])).toBe("in_progress");
+  });
+});
+
+describe("document agent contract", () => {
+  const golden = JSON.parse(readFileSync(resolve(__dirname, "../../../schemas/fixtures/document_proposal.json"), "utf8"));
+  it("accepts the Python agent's golden output", () => {
+    const r = documentPayloadSchema.safeParse(golden);
+    expect(r.success).toBe(true);
+    if (r.success) expect(r.data.document_type).toBe("Balance confirmation");
+  });
+  it("rejects a payload that claims another schema or has the wrong shape", () => {
+    expect(documentPayloadSchema.safeParse({ ...golden, schema: "trial_balance" }).success).toBe(false);
+    expect(documentPayloadSchema.safeParse({ ...golden, facts: { amounts: "x" } }).success).toBe(false);
   });
 });

@@ -156,6 +156,11 @@ class Agent(ABC, Generic[I, O]):
     input_model: ClassVar[type[BaseModel]]
     output_model: ClassVar[type[BaseModel]]
 
+    @classmethod
+    def accepts(cls, payload: I) -> bool:
+        """Override to decline events this agent has nothing to do with (no run is recorded for a declined event)."""
+        return True
+
     @abstractmethod
     def run(self, ctx: RunContext, payload: I) -> O:
         """Do the work and return a validated output (typically containing proposals)."""

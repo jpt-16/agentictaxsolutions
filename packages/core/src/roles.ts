@@ -26,11 +26,12 @@ export const PERMISSIONS = [
   "proposal.review", // accept or reject them
   "rules.manage", // switch validation rules on/off and tune them
   "tenant.admin", // users and tenant-level AI switches
+  "report.read", // reports and data exports (every export is audited)
 ] as const;
 export type Permission = (typeof PERMISSIONS)[number];
 
 const MATRIX: Record<Role, readonly Permission[]> = {
-  tenant_admin: ["dashboard.read", "request.read.all", "audit.read", "user.read", "proposal.read", "rules.manage", "tenant.admin"],
+  tenant_admin: ["dashboard.read", "request.read.all", "audit.read", "user.read", "proposal.read", "rules.manage", "tenant.admin", "report.read"],
   tax_manager: [
     "dashboard.read",
     "request.read.all",
@@ -45,10 +46,11 @@ const MATRIX: Record<Role, readonly Permission[]> = {
     "proposal.read",
     "proposal.review",
     "rules.manage",
+    "report.read",
   ],
-  tax_reviewer: ["dashboard.read", "request.read.all", "item.review", "comment.create", "user.read", "proposal.read", "proposal.review"],
+  tax_reviewer: ["dashboard.read", "request.read.all", "item.review", "comment.create", "user.read", "proposal.read", "proposal.review", "report.read"],
   contributor: ["dashboard.read", "request.read.assigned", "item.submit", "comment.create"],
-  auditor: ["dashboard.read", "request.read.all", "audit.read", "user.read", "proposal.read"],
+  auditor: ["dashboard.read", "request.read.all", "audit.read", "user.read", "proposal.read", "report.read"],
 };
 
 export function can(role: Role, permission: Permission): boolean {

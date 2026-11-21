@@ -30,7 +30,7 @@ export async function loadSession(db: Db, tenantId: string, userId: string): Pro
   return withTenant(db, { tenantId }, async (tx) => {
     const [u] = await tx.select().from(users).where(eq(users.id, userId));
     if (!u || !u.isActive) return null;
-    return { userId: u.id, tenantId: u.tenantId, role: u.role, name: u.name, email: u.email, departmentId: u.departmentId, entityId: u.entityId };
+    return { userId: u.id, tenantId: u.tenantId, role: u.role, name: u.name, email: u.email, departmentId: u.departmentId, entityId: u.entityId, tokensValidAfterMs: u.tokensValidAfter ? u.tokensValidAfter.getTime() : null };
   });
 }
 
@@ -40,5 +40,16 @@ export async function recordLogin(db: Db, tenantId: string, userId: string, meth
     const [u] = await tx.select({ name: users.name, role: users.role }).from(users).where(eq(users.id, userId));
     if (!u) return;
     await recordAudit(tx, { tenantId, actor: { type: "user", id: userId, label: u.name }, action: "auth.login", entityType: "user", entityId: userId, summary: `${u.name} signed in (${method === "sso" ? "single sign-on" : "development sign-in"})`, after: { method } });
+  });
+}
+
+/**
+ * Server-side sign-out: every session token this person holds, on every device, stops working immediately. (Deleting the cookie
+ * alone would leave a copied token valid until it expires.) Runs through a database function that can only touch the caller's own row.
+ */
+export async function revokeMySessions(db: Db, tenantId: string, userId: string, name: string): Promise<void> {
+  await withTenant(db, { tenantId, userId }, async (tx) => {
+    await tx.execute(sql`select revoke_my_sessions()`);
+    await recordAudit(tx, { tenantId, actor: { type: "user", id: userId, label: name }, action: "auth.logout", entityType: "user", entityId: userId, summary: `${name} signed out`, after: {} });
   });
 }

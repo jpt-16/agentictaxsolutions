@@ -1,0 +1,6 @@
+BALANCE CONFIRMATION
+Northwind France SAS (the Company) hereby confirms the balance owed to Northwind GmbH as at 31 December 2025.
+Intercompany payable: EUR 340,000.00 (invoice dated 2025-11-30; settlement due 15 January 2026).
+This confirmation relates to the intercompany account reconciliation for the FY2025 close.
+Signed on behalf of Northwind France SAS by the Authorised Signatory.
+Date: 12 January 2026

@@ -1,5 +1,5 @@
 import { sql } from "drizzle-orm";
-import { connect } from "@taxops/db";
+import { connect, installDevLogin } from "@taxops/db";
 import { runMigrations } from "@taxops/db/src/migrate";
 
 /** DESTROYS all data and rebuilds the schema. Development only; refuses anything that doesn't look local. */
@@ -19,4 +19,6 @@ export async function resetDevDatabase(ownerUrl: string): Promise<void> {
     await owner.close();
   }
   await runMigrations(ownerUrl);
+  const dev = connect(ownerUrl, { max: 1 });
+  try { await installDevLogin(dev.db); } finally { await dev.close(); } // dev picker only; never part of the migrations
 }

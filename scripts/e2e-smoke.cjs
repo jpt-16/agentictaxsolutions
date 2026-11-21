@@ -314,6 +314,94 @@ const BASE = process.env.BASE_URL ?? "http://localhost:3000";
   step("deadline sweep sent an overdue reminder to an assignee of the overdue request");
   await logout();
 
+  // ===== Documents, templates, @mentions, reports, and server-side sign-out =====
+  const SAMPLES = path.join(__dirname, "../samples");
+  const fs = require("node:fs");
+  const DOCX_MIME = "application/vnd.openxmlformats-officedocument.wordprocessingml.document";
+  await login("Marcus Hale");
+  await page.goto(`${BASE}/requests/new`);
+  await page.fill("#title", "E2E documents – intercompany confirmations");
+  await page.fill("#due", "2027-03-01");
+  await page.fill('[aria-label="Item 1 title"]', "Signed balance confirmation");
+  await page.click('label:has-text("Accounting – Americas") input');
+  await page.click('button:has-text("Publish request")');
+  await page.waitForURL(/\/requests\/[0-9a-f-]{36}/);
+  const docUrl = page.url();
+  await page.locator("#comment").fill("Please attach the signed confirmation, @Sam Whitfield. Thank you.");
+  await page.getByRole("button", { name: "Post comment" }).click();
+  await page.getByText("Please attach the signed confirmation").waitFor();
+  await page.locator("p span", { hasText: "@Sam Whitfield" }).first().waitFor(); // the mention is highlighted
+
+  await page.getByRole("button", { name: "Save as template" }).click();
+  await page.fill("#tpl-name", "E2E confirmation pack");
+  await page.getByRole("button", { name: "Save", exact: true }).click();
+  await page.waitForSelector(".toast:has-text('Template saved')");
+  await page.goto(`${BASE}/requests/new`);
+  await page.getByRole("link", { name: /E2E confirmation pack/ }).click();
+  await page.waitForFunction(() => [...document.querySelectorAll("input")].some((i) => i.value === "Signed balance confirmation"));
+  step("manager saved a request as a template and started a new request from it; the @mention was highlighted");
+  await logout();
+
+  await login("Sam Whitfield");
+  await page.goto(`${BASE}/notifications`);
+  await page.getByText(/Marcus Hale mentioned you on TX-/).first().waitFor();
+  await page.goto(docUrl);
+  const DOCITEM = "Signed balance confirmation";
+  await item(DOCITEM).locator("textarea").fill("Signed confirmations attached.");
+  await item(DOCITEM).locator('input[type="file"]').setInputFiles([
+    { name: "balance-confirmation.docx", mimeType: DOCX_MIME, buffer: fs.readFileSync(path.join(SAMPLES, "balance-confirmation.docx")) },
+    { name: "balance-confirmation.pdf", mimeType: "application/pdf", buffer: fs.readFileSync(path.join(SAMPLES, "balance-confirmation.pdf")) },
+  ]);
+  await btn(DOCITEM, "Submit").click();
+  await item(DOCITEM).getByText("balance-confirmation.pdf").waitFor();
+  step("the mentioned contributor was notified, then uploaded a Word and a PDF document");
+  await logout();
+
+  execSync(WORKER, { cwd: path.join(__dirname, "../services/agent-worker"), stdio: "pipe", env: process.env });
+  await login("Naomi Clarke");
+  await page.goto(`${BASE}/review`);
+  await page.getByRole("link", { name: "Supporting document: balance-confirmation.pdf" }).first().click();
+  await page.waitForSelector("text=What the agent read");
+  const docText = await page.locator("body").innerText();
+  assert.match(docText, /Balance confirmation/);
+  assert.match(docText, /EUR 340,000\.00/);
+  assert.match(docText, /15 January 2026/);
+  await page.getByRole("button", { name: "Accept as correctly read" }).click();
+  await page.getByText("Accepted", { exact: true }).first().waitFor();
+  step("document agent read the PDF; the reviewer saw the extracted facts and accepted them");
+  await logout();
+
+  await login("Marcus Hale");
+  await page.goto(`${BASE}/reports`);
+  await page.getByRole("heading", { name: "Reports" }).waitFor();
+  assert.match(await page.locator("body").innerText(), /Average time to close/);
+  const post = (url, form) => page.context().request.post(`${BASE}${url}`, { headers: { origin: BASE }, form });
+  const csv = await post("/api/reports/status", {});
+  assert.equal(csv.status(), 200);
+  assert.match(csv.headers()["content-type"], /text\/csv/);
+  assert.match((await csv.text()).split("\r\n")[0], /^reference,title,tax_year,status/);
+  const mainId = requestUrl.split("/").pop();
+  const pack = await post("/api/reports/data", { requestId: mainId });
+  assert.equal(pack.status(), 200);
+  const packText = await pack.text();
+  assert.match(packText.split("\r\n")[0], /^request,item,file,sheet,source_row,account_code/);
+  assert.match(packText, /,1000,Cash,/); // the accepted trial balance, line by line
+  assert.equal((await page.context().request.post(`${BASE}/api/reports/status`, { form: {} })).status(), 403); // no Origin header: refused
+  step("reports page, status CSV and approved-data pack work; cross-origin export is refused");
+
+  // Sign-out voids the token on the server, not just in the browser
+  const cookies = await page.context().cookies();
+  const session = cookies.find((c) => c.name === "taxops_session");
+  assert.ok(session);
+  await logout();
+  await page.context().addCookies([session]);
+  await page.goto(`${BASE}/requests`);
+  await page.waitForURL("**/login");
+  step("a copied session cookie stops working after sign-out (server-side revocation)");
+  await login("Sam Whitfield");
+  assert.equal((await page.goto(`${BASE}/reports`)).status(), 404); // contributors have no reports
+  await logout();
+
   // Administration: AI governance switches and people management (tenant admin only)
   await login("Priya Raman");
   await page.goto(`${BASE}/settings`);
@@ -321,9 +409,11 @@ const BASE = process.env.BASE_URL ?? "http://localhost:3000";
   await page.getByRole("button", { name: "Save" }).first().click();
   await confirmSheet(); // sending excerpts to an external provider asks first
   await page.waitForSelector("text=Settings saved");
+  await page.locator('button:has-text("Saving")').waitFor({ state: "detached" }); // the toast shows slightly before the transition settles
   await page.getByLabel("AI extraction").uncheck(); // turning AI off also turns external use off
   await page.getByRole("button", { name: "Save" }).first().click();
   await page.waitForSelector(".toast:has-text('Settings saved')");
+  await page.locator('button:has-text("Saving")').waitFor({ state: "detached" });
   await page.getByRole("button", { name: "Add a person" }).click();
   await page.fill("#nu-name", "E2E New Person");
   await page.fill("#nu-email", "e2e.person@northwind.example");
