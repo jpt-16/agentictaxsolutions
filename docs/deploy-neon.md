@@ -4,6 +4,26 @@ This covers the database. The web app and the Python worker also need a host tha
 
 Everything below was rehearsed on a scratch Postgres 16 database (bootstrap, all migrations, tenant creation). It has not been run against Neon itself, so treat the first run as a dry run.
 
+## Fast path (recommended)
+
+The project `young-mode-16349869` is linked in `neon.ts`. On a machine that can reach your Neon database (a cloud sandbox cannot: database traffic is not HTTPS), with `psql` and `pnpm` installed:
+
+```bash
+neon login
+```
+
+```bash
+neon env pull
+```
+
+```bash
+bash scripts/neon-setup.sh
+```
+
+This creates the four roles with fresh random passwords, applies all migrations as the owner role and writes the three connection strings to `.env.neon` (git-ignored, never printed). Re-running it is safe and rotates the passwords. Then create the first tenant (step 4 below). The numbered steps that follow are the same thing done by hand.
+
+> **Postgres version.** The tests run on Postgres 16, but a Neon project created from the console can default to a newer version (this one is on 18). Newer versions are expected to work but are untested here: run `pnpm test` against your database version before trusting it, or create the project on 16.
+
 ## 1. Create the database
 
 1. Create a Neon project. Choose **Postgres 16**, the version the test suites run on, and a region close to your app host.

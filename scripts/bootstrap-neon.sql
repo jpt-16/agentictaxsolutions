@@ -11,6 +11,11 @@ SELECT format('CREATE ROLE taxops_worker LOGIN PASSWORD %L NOSUPERUSER NOBYPASSR
 SELECT 'CREATE ROLE taxops_ops NOLOGIN NOSUPERUSER BYPASSRLS'
   WHERE NOT EXISTS (SELECT FROM pg_roles WHERE rolname = 'taxops_ops') \gexec
 
+-- Re-running rotates the passwords to the values you pass in.
+ALTER ROLE taxops_owner PASSWORD :'owner_pw';
+ALTER ROLE taxops_app PASSWORD :'app_pw';
+ALTER ROLE taxops_worker PASSWORD :'worker_pw';
+
 GRANT taxops_ops TO taxops_owner;
 -- Allow this session to hand ownership to taxops_owner (needed on managed Postgres where the project owner is not a true superuser).
 SELECT format('GRANT taxops_owner TO %I', current_user) WHERE NOT pg_has_role(current_user, 'taxops_owner', 'MEMBER') \gexec
