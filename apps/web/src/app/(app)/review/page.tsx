@@ -50,11 +50,11 @@ export default async function ReviewQueuePage({ searchParams }: { searchParams: 
               <tbody>
                 {rows.map((r) => (
                   <tr key={r.id} className="row-link">
-                    <td className="max-w-[300px]">
+                    <td className="min-w-[14rem] max-w-[300px]">
                       <Link href={`/review/${r.id}`} className="font-medium text-ink hover:text-accent">{r.title}</Link>
                       <p className="mt-0.5 truncate text-[12px] text-muted">{r.detail}</p>
                     </td>
-                    <td className="max-w-[240px]"><Link href={`/requests/${r.requestId}`} className="text-body hover:text-accent">{r.requestTitle}</Link><p className="tnum text-[12px] text-muted">{r.requestRef} · {r.itemTitle}</p></td>
+                    <td className="min-w-[13rem] max-w-[260px]"><Link href={`/requests/${r.requestId}`} className="text-body hover:text-accent">{r.requestTitle}</Link><p className="tnum text-[12px] text-muted">{r.requestRef} · {r.itemTitle}</p></td>
                     <td className="whitespace-nowrap text-body">{r.fileName}</td>
                     <td className="tnum text-body">{kind === "finding" ? r.ruleId : r.rowCount}</td>
                     <td className="whitespace-nowrap"><div className="flex items-center gap-1.5">{kind === "finding" ? <SeverityBadge severity={r.severity} /> : <><ConfidencePill value={r.confidence} />{r.severity === "warning" && <Badge tone="amber">Check</Badge>}</>}</div></td>

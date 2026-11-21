@@ -68,7 +68,7 @@ export function NewRequestForm({ year, departments, entities, people, requestId,
   const fe = (k: string) => fieldErrors[k] ? <p className="err" role="alert">{fieldErrors[k]}</p> : null;
 
   return (
-    <form onSubmit={(e) => { e.preventDefault(); submit(false); }} className="grid gap-5 lg:grid-cols-[1fr_380px]" noValidate>
+    <form onSubmit={(e) => { e.preventDefault(); submit(false); }} className="grid gap-5 lg:grid-cols-[minmax(0,1fr)_380px]" noValidate>
       <div className="space-y-5">
         <section className="group p-4 sm:p-5">
           <h2 className="mb-4 text-[14px] font-semibold text-ink">Details</h2>
@@ -118,7 +118,7 @@ export function NewRequestForm({ year, departments, entities, people, requestId,
               <li key={i} className="rounded-lg border border-line bg-surface2 p-3">
                 <div className="flex items-start gap-2">
                   <span className="tnum mt-2 w-5 flex-none text-[12px] text-muted">{i + 1}.</span>
-                  <div className="grid flex-1 gap-2 sm:grid-cols-[1fr_200px]">
+                  <div className="grid flex-1 gap-2 sm:grid-cols-[minmax(0,1fr)_200px]">
                     <div>
                       <input aria-label={`Item ${i + 1} title`} className="field" value={it.title} onChange={(e) => setItem(i, { title: e.target.value })} placeholder="What do you need?" maxLength={200} />
                       {fe(`items.${i}.title`)}
