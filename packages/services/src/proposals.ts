@@ -6,7 +6,7 @@ import {
 import {
   agentRuns, extractedRows, files, jobs, proposals, recordAudit, requestItems, requests, submissions, tenants, users, type Tx,
 } from "@taxops/db";
-import { auditActorOf, NotFoundError, scoped, type ServiceContext } from "./context";
+import { auditActorOf, NotFoundError, scoped, type ServiceContext, assertUuid } from "./context";
 import { reviewItem } from "./requests";
 
 export interface ProposalFilters {
@@ -51,6 +51,7 @@ export async function pendingProposalCount(ctx: ServiceContext): Promise<number>
 }
 
 export async function getProposal(ctx: ServiceContext, proposalId: string, opts: { rowOffset?: number; rowLimit?: number } = {}) {
+  assertUuid(proposalId, "Proposal");
   assertCan(ctx.session.role, "proposal.read");
   return scoped(ctx, async (tx) => {
     const [p] = await tx.select().from(proposals).where(eq(proposals.id, proposalId));
@@ -124,6 +125,7 @@ export async function findingsForRequest(tx: Tx, ctx: ServiceContext, requestId:
  * Uses the normal review path, so permissions, segregation of duties, status rules and audit all apply unchanged.
  */
 export async function requestChangesFromFinding(ctx: ServiceContext, findingId: string) {
+  assertUuid(findingId, "Finding");
   assertCan(ctx.session.role, "proposal.review");
   assertCan(ctx.session.role, "item.review");
   const f = await getProposal(ctx, findingId, { rowLimit: 1 });
@@ -135,6 +137,7 @@ export async function requestChangesFromFinding(ctx: ServiceContext, findingId: 
 
 /** A human accepts or rejects an AI proposal. The decision is final (also enforced by a database trigger). */
 export async function decideProposal(ctx: ServiceContext, proposalId: string, rawInput: unknown) {
+  assertUuid(proposalId, "Proposal");
   assertCan(ctx.session.role, "proposal.review");
   const input = decideProposalSchema.parse(rawInput);
   return scoped(ctx, async (tx) => {
@@ -205,6 +208,7 @@ async function assertAiEnabled(tx: Tx) {
 }
 
 export async function requestRemap(ctx: ServiceContext, proposalId: string, rawInput: unknown) {
+  assertUuid(proposalId, "Proposal");
   assertCan(ctx.session.role, "proposal.review");
   const input = remapSchema.parse(rawInput);
   return scoped(ctx, async (tx) => {
@@ -231,6 +235,7 @@ export async function requestRemap(ctx: ServiceContext, proposalId: string, rawI
 
 /** Queue extraction again for a file (e.g. after the worker was down, or a failed run). Supersedes pending output for each sheet. */
 export async function reprocessFile(ctx: ServiceContext, fileId: string) {
+  assertUuid(fileId, "File");
   assertCan(ctx.session.role, "proposal.review");
   return scoped(ctx, async (tx) => {
     const [f] = await tx.select({ id: files.id, name: files.originalName, submissionId: files.submissionId }).from(files).where(eq(files.id, fileId));
@@ -253,6 +258,7 @@ export async function reprocessFile(ctx: ServiceContext, fileId: string) {
 
 /** Whether AI work is queued or running for a file (so the UI can say "in progress" instead of looking stuck). */
 export async function pendingWorkForFile(ctx: ServiceContext, fileId: string): Promise<number> {
+  assertUuid(fileId, "File");
   if (!can(ctx.session.role, "proposal.read")) return 0;
   return scoped(ctx, async (tx) => (await tx.select({ n: sql<number>`count(*)::int` }).from(jobs)
     .where(and(sql`${jobs.payload}->>'fileId' = ${fileId}`, inArray(jobs.status, ["queued", "running"]), inArray(jobs.type, ["file.uploaded", "extraction.remap"]))))[0]!.n);

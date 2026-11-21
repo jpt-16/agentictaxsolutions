@@ -1,9 +1,10 @@
 import { randomUUID } from "node:crypto";
 import { createHash } from "node:crypto";
-import { eq } from "drizzle-orm";
+import { eq, gt, sql } from "drizzle-orm";
 import { assertCan } from "@taxops/core";
 import { files, recordAudit, requestItems, submissions } from "@taxops/db";
-import { auditActorOf, NotFoundError, scoped, type ServiceContext } from "../context";
+import { files as filesTable } from "@taxops/db";
+import { auditActorOf, ConflictError, NotFoundError, scoped, type ServiceContext, assertUuid } from "../context";
 import { loadVisibleRequest, submitItem } from "../requests";
 import { previewSpreadsheet, type SheetPreview } from "./preview";
 import { ScanUnavailableError, type Scanner } from "./scanner";
@@ -12,6 +13,9 @@ import type { StoredFile } from "./types";
 import {
   MAX_FILES_PER_SUBMISSION, MAX_TOTAL_BYTES, UploadRejectedError, isPreviewable, kindOfContentType, validateUpload, type FileKind,
 } from "./validate";
+
+/** Files one company may upload in any rolling 24 hours (each can trigger processing and, if allowed, paid model calls). */
+export const MAX_FILES_PER_TENANT_PER_DAY = 2000;
 
 export interface FileDeps { storage: FileStorage; scanner: Scanner }
 export interface Upload { name: string; bytes: Buffer }
@@ -23,12 +27,17 @@ export interface Upload { name: string; bytes: Buffer }
  * (all-or-nothing), is never stored, and is recorded in the audit trail as `file.rejected`.
  */
 export async function submitWithFiles(ctx: ServiceContext, deps: FileDeps, itemId: string, rawInput: unknown, uploads: Upload[]) {
+  assertUuid(itemId, "Item");
   assertCan(ctx.session.role, "item.submit");
   if (uploads.length > MAX_FILES_PER_SUBMISSION) throw new UploadRejectedError(`Attach at most ${MAX_FILES_PER_SUBMISSION} files per submission.`);
   if (uploads.reduce((n, u) => n + u.bytes.length, 0) > MAX_TOTAL_BYTES) throw new UploadRejectedError("The files are larger than 100 MB in total.");
 
   // Fail fast (before any scanning/storage) if this person may not submit to this item right now.
   const context = await scoped(ctx, async (tx) => {
+    // A company-wide daily cap on uploaded files. Each file can trigger processing (and, if allowed, paid model calls), so one account
+    // cannot queue unlimited work. The limit is generous for real use: legitimate close packages are tens of files, not thousands.
+    const [today] = await tx.select({ n: sql<number>`count(*)::int` }).from(filesTable).where(gt(filesTable.createdAt, sql`now() - interval '24 hours'`));
+    if ((today?.n ?? 0) + uploads.length > MAX_FILES_PER_TENANT_PER_DAY) throw new ConflictError(`Your company has reached its limit of ${MAX_FILES_PER_TENANT_PER_DAY} uploaded files in 24 hours. Try again later or ask an administrator.`);
     const [item] = await tx.select().from(requestItems).where(eq(requestItems.id, itemId));
     if (!item) throw new NotFoundError("Item");
     const { req } = await loadVisibleRequest(tx, ctx, item.requestId);
@@ -118,11 +127,13 @@ async function readVerified(deps: FileDeps, meta: FileAccess): Promise<Buffer> {
 }
 
 export async function downloadFile(ctx: ServiceContext, deps: FileDeps, fileId: string) {
+  assertUuid(fileId, "File");
   const meta = await authorize(ctx, fileId, "download");
   return { name: meta.name, contentType: meta.contentType, size: meta.size, bytes: await readVerified(deps, meta) };
 }
 
 export async function previewFile(ctx: ServiceContext, deps: FileDeps, fileId: string, sheet?: string): Promise<{ name: string; size: number; preview: SheetPreview }> {
+  assertUuid(fileId, "File");
   const meta = await authorize(ctx, fileId, "view");
   if (!meta.kind || !isPreviewable(meta.kind)) throw new UploadRejectedError("Preview is only available for spreadsheets.");
   return { name: meta.name, size: meta.size, preview: await previewSpreadsheet(await readVerified(deps, meta), meta.kind, sheet) };

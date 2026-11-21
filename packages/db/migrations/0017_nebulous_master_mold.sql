@@ -1,0 +1,1 @@
+ALTER TABLE "tenants" ADD COLUMN "llm_daily_call_limit" integer DEFAULT 200 NOT NULL;

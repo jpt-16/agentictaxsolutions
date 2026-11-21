@@ -2,6 +2,7 @@
 import { useState, useTransition } from "react";
 import { Wrench } from "lucide-react";
 import { requestRemapAction } from "../actions";
+import { safely } from "@/lib/safe-action";
 
 const FIELDS: { key: string; label: string }[] = [
   { key: "account_code", label: "Account code" }, { key: "account_name", label: "Account name" },
@@ -22,7 +23,7 @@ export function RemapForm({ proposalId, rows, initialHeaderRow, initial }: { pro
     setMsg(null);
     const columns = Object.fromEntries(Object.entries(cols).filter(([, v]) => v));
     start(async () => {
-      const r = await requestRemapAction(proposalId, Number(headerRow), columns);
+      const r = await safely(() => requestRemapAction(proposalId, Number(headerRow), columns));
       setMsg(r.ok ? { ok: true, text: "Re-extraction queued. The corrected result replaces this one when the worker has processed it; refresh in a moment." } : { ok: false, text: r.error });
     });
   };

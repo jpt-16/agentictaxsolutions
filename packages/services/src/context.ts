@@ -54,3 +54,20 @@ export class ConflictError extends Error {
     this.name = "ConflictError";
   }
 }
+
+const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+/** Ids come from the browser. Anything that is not a UUID cannot exist, so it is "not found", never a database error. */
+export function assertUuid(id: unknown, what = "Resource"): asserts id is string {
+  if (typeof id !== "string" || !UUID.test(id)) throw new NotFoundError(what);
+}
+/** A free-text search value: control characters removed, length clamped. Undefined when nothing usable remains. */
+export function cleanQuery(v: unknown, max = 200): string | undefined {
+  if (typeof v !== "string") return undefined;
+  // eslint-disable-next-line no-control-regex
+  const t = v.replace(/[\u0000-\u001F\u007F]/g, "").trim().slice(0, max);
+  return t || undefined;
+}
+/** A whole number within [min, max]; the default for anything that is not a finite number (NaN, Infinity, strings, objects). */
+export function clampInt(v: unknown, fallback: number, min: number, max: number): number {
+  return typeof v === "number" && Number.isFinite(v) ? Math.min(max, Math.max(min, Math.trunc(v))) : fallback;
+}

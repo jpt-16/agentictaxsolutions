@@ -37,6 +37,8 @@ export const tenants = pgTable("tenants", {
   // and separately before any content may leave our boundary to an external model provider.
   aiExtractionEnabled: boolean("ai_extraction_enabled").notNull().default(false),
   externalLlmEnabled: boolean("external_llm_enabled").notNull().default(false),
+  /** Spending limit: external model calls this company may make in any rolling 24 hours (0 turns external calls off). */
+  llmDailyCallLimit: integer("llm_daily_call_limit").notNull().default(200),
   createdAt: createdAt(),
 });
 

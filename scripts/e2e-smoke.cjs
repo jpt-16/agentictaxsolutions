@@ -482,6 +482,23 @@ const BASE = process.env.BASE_URL ?? "http://localhost:3000";
   await page.getByText(/Added E2E New Person as Contributor/).waitFor(); // administration is itself audited
   await logout();
 
+  // Network failure mid-action: inline error, typed text kept, retry works once back online.
+  {
+    const ctxA = await browser.newContext({ viewport: { width: 1200, height: 900 } }); const pg = await ctxA.newPage();
+    await pg.goto(`${BASE}/login`); await pg.click('button:has-text("Sam Whitfield")'); await pg.waitForURL(`${BASE}/`);
+    await pg.goto(`${BASE}/requests`);
+    const hrefs = await pg.locator('a[href^="/requests/"]').evaluateAll((a) => [...new Set(a.map((x) => x.getAttribute("href")).filter((h) => /[0-9a-f-]{36}$/.test(h)))]);
+    for (const h of hrefs) { await pg.goto(`${BASE}${h}`); await pg.waitForTimeout(800); if (await pg.locator("#comment").count()) break; }
+    await pg.locator("#comment").fill("offline regression note");
+    await ctxA.setOffline(true); await pg.getByRole("button", { name: "Post comment" }).click(); await pg.waitForTimeout(2500);
+    assert.ok(!/Something went wrong/.test(await pg.locator("body").innerText()), "offline replaced the page with an error screen");
+    assert.equal(await pg.locator("#comment").inputValue(), "offline regression note");
+    assert.ok(/Could not reach the server/.test(await pg.locator("body").innerText()));
+    await ctxA.setOffline(false); await pg.getByRole("button", { name: "Post comment" }).click(); await pg.getByText("offline regression note").first().waitFor();
+    await ctxA.close();
+    step("a dropped connection mid-action shows an inline message, keeps what was typed, and the retry succeeds");
+  }
+
   // Operations endpoints
   const health = await (await fetch(`${BASE}/api/health`)).json();
   assert.deepEqual(health, { status: "ok" });

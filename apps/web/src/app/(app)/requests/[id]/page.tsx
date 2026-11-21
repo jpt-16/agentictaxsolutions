@@ -75,12 +75,12 @@ export default async function RequestPage({ params, searchParams }: {
         </p>
       )}
 
-      <div className="grid gap-5 lg:grid-cols-[minmax(0,1fr)_340px]">
-        <div className="space-y-5">
+      <div className="grid grid-cols-[minmax(0,1fr)] gap-5 lg:grid-cols-[minmax(0,1fr)_340px]">
+        <div className="min-w-0 space-y-5">
           {r.description && (
             <Card>
               <CardHeader title="Instructions" />
-              <p className="whitespace-pre-wrap px-5 py-4 text-[14px] text-body">{r.description}</p>
+              <p className="whitespace-pre-wrap break-words px-5 py-4 text-[14px] text-body [overflow-wrap:anywhere]">{r.description}</p>
             </Card>
           )}
 
@@ -213,7 +213,7 @@ export default async function RequestPage({ params, searchParams }: {
           <Card>
             <CardHeader title="Activity" subtitle="Everything that has happened on this request" />
             {r.activity.length === 0 ? <EmptyState title="No activity yet" /> : (
-              <ol className="max-h-[420px] overflow-y-auto px-5 py-3">
+              <ol tabIndex={0} aria-label="Activity history" className="max-h-[420px] overflow-y-auto px-5 py-3">
                 {r.activity.map((e) => (
                   <li key={e.id} className="relative border-l border-line pb-4 pl-4 last:pb-1">
                     <span aria-hidden className="absolute -left-[4.5px] top-1.5 h-2 w-2 rounded-full" style={{ background: "var(--line-strong)" }} />

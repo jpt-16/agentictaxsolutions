@@ -21,10 +21,10 @@ from psycopg.rows import dict_row
 from pydantic import BaseModel, ValidationError
 
 from .contract import Agent, AgentResult, AgentSpec, RunContext
-from .llm import LLMGateway, NullGateway
+from .llm import BudgetedGateway, LLMGateway, NullGateway
 from .registry import AgentRegistry
 from .storage import BlobStorage
-from .store import JobFiles, JobProposals, save_results
+from .store import JobFiles, JobProposals, read_llm_budget, save_results
 
 log = logging.getLogger("taxops.worker")
 
@@ -114,10 +114,23 @@ class Worker:
         # Content only reaches an external model if the TENANT has opted in; otherwise the agent gets a gateway that refuses.
         allow = bool(meta and meta.external_llm_enabled) or bool(proposals and proposals.external_allowed())
         gated = files is not None or proposals is not None
-        llm = self.gateway if allow or not gated else NullGateway("This tenant has not allowed external LLM processing.")
+        llm: LLMGateway = self.gateway if allow or not gated else NullGateway("This tenant has not allowed external LLM processing.")
+        if allow and gated and not isinstance(llm, NullGateway):
+            # Spending limits: the company's rolling 24-hour call budget and a per-file cap, enforced here whatever the agent does.
+            limit, used = read_llm_budget(conn, job.id, self.worker_id)
+            per_file = int(os.environ.get("LLM_MAX_CALLS_PER_JOB", "5"))
+            remaining = max(0, limit - used)
+            if remaining == 0:
+                llm = NullGateway(f"This company's daily limit of {limit} external AI calls has been reached ({used} used in the last 24 hours).")
+            else:
+                llm = BudgetedGateway(llm, min(per_file, remaining), int(os.environ.get("LLM_MAX_PROMPT_CHARS", "60000")),
+                                      reason=f"This file has reached its limit of {min(per_file, remaining)} AI call(s) (daily limit {limit}, {used} used).")
         ctx = RunContext(tenant_id=job.tenant_id, run_id=uuid4(), triggered_by_event=job.type, llm=llm, files=files, proposals=proposals, related=proposals,
                          allow_external_llm=allow or not gated)
         output = agent_cls().run(ctx, payload)
+        if isinstance(output, AgentResult) and isinstance(llm, BudgetedGateway) and llm.attempts > output.meta.llm_calls:
+            output.meta.llm_calls = llm.attempts  # bill-accurate: attempts whose answer was later rejected still cost money
+            output.meta.model = output.meta.model or llm.model
         if isinstance(output, AgentResult) and files is not None:
             save_results(conn, job.id, self.worker_id, agent_cls.spec, output)  # atomic + idempotent per (job, agent)
         self.on_output(job, agent_cls.spec, output)

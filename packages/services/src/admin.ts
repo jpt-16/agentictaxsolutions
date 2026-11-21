@@ -1,8 +1,8 @@
-import { and, asc, eq, ne } from "drizzle-orm";
+import { and, asc, eq, gt, ne, sql } from "drizzle-orm";
 import { z } from "zod";
-import { assertCan, ForbiddenError, ROLES, ROLE_LABELS } from "@taxops/core";
-import { departments, legalEntities, recordAudit, tenants, users } from "@taxops/db";
-import { auditActorOf, ConflictError, NotFoundError, scoped, type ServiceContext } from "./context";
+import { assertCan, ForbiddenError, NO_CONTROL_CHARS, NO_CONTROL_MESSAGE, ROLES, ROLE_LABELS } from "@taxops/core";
+import { agentRuns, departments, legalEntities, recordAudit, tenants, users } from "@taxops/db";
+import { auditActorOf, ConflictError, NotFoundError, scoped, type ServiceContext, assertUuid } from "./context";
 
 /**
  * Database triggers are the authority on who may administer users and tenant settings. When one fires, its message is written for
@@ -25,28 +25,34 @@ const capitalize = (s: string) => s.charAt(0).toUpperCase() + s.slice(1) + (s.en
 export async function getTenantSettings(ctx: ServiceContext) {
   assertCan(ctx.session.role, "tenant.admin");
   return scoped(ctx, async (tx) => {
-    const [t] = await tx.select({ name: tenants.name, aiExtractionEnabled: tenants.aiExtractionEnabled, externalLlmEnabled: tenants.externalLlmEnabled }).from(tenants);
-    return t!;
+    const [t] = await tx.select({ name: tenants.name, aiExtractionEnabled: tenants.aiExtractionEnabled, externalLlmEnabled: tenants.externalLlmEnabled, llmDailyCallLimit: tenants.llmDailyCallLimit }).from(tenants);
+    const [u] = await tx.select({ n: sql<number>`coalesce(sum(${agentRuns.llmCalls}), 0)::int` }).from(agentRuns).where(gt(agentRuns.createdAt, sql`now() - interval '24 hours'`));
+    return { ...t!, llmCallsLast24h: u?.n ?? 0 };
   });
 }
 
-const settingsSchema = z.object({ aiExtractionEnabled: z.boolean().optional(), externalLlmEnabled: z.boolean().optional() })
-  .refine((v) => v.aiExtractionEnabled !== undefined || v.externalLlmEnabled !== undefined, "Nothing to change");
+const settingsSchema = z.object({
+  aiExtractionEnabled: z.boolean().optional(),
+  externalLlmEnabled: z.boolean().optional(),
+  /** Spending limit: external model calls per rolling 24 hours. 0 stops all external calls. */
+  llmDailyCallLimit: z.number({ message: "Enter a whole number" }).int("Enter a whole number").min(0, "The limit cannot be negative").max(100_000, "The limit is too high").optional(),
+}).refine((v) => v.aiExtractionEnabled !== undefined || v.externalLlmEnabled !== undefined || v.llmDailyCallLimit !== undefined, "Nothing to change");
 
 export async function updateTenantSettings(ctx: ServiceContext, raw: unknown) {
   assertCan(ctx.session.role, "tenant.admin");
   const input = settingsSchema.parse(raw);
   try {
     return await scoped(ctx, async (tx) => {
-      const [before] = await tx.select({ a: tenants.aiExtractionEnabled, e: tenants.externalLlmEnabled }).from(tenants);
+      const [before] = await tx.select({ a: tenants.aiExtractionEnabled, e: tenants.externalLlmEnabled, l: tenants.llmDailyCallLimit }).from(tenants);
       // External model use only makes sense with AI extraction on; turning AI off also turns external use off (fail safe).
       const aiNext = input.aiExtractionEnabled ?? before!.a;
       const extNext = aiNext ? (input.externalLlmEnabled ?? before!.e) : false;
-      await tx.update(tenants).set({ aiExtractionEnabled: aiNext, externalLlmEnabled: extNext });
+      const limitNext = input.llmDailyCallLimit ?? before!.l;
+      await tx.update(tenants).set({ aiExtractionEnabled: aiNext, externalLlmEnabled: extNext, llmDailyCallLimit: limitNext });
       await recordAudit(tx, {
         tenantId: ctx.session.tenantId, actor: auditActorOf(ctx), action: "tenant.settings_updated", entityType: "tenant", entityId: ctx.session.tenantId,
-        summary: `Set AI extraction ${aiNext ? "on" : "off"} and external AI model use ${extNext ? "on" : "off"}`,
-        before: { aiExtractionEnabled: before!.a, externalLlmEnabled: before!.e }, after: { aiExtractionEnabled: aiNext, externalLlmEnabled: extNext },
+        summary: `Set AI extraction ${aiNext ? "on" : "off"}, external AI model use ${extNext ? "on" : "off"}, daily external AI call limit ${limitNext}`,
+        before: { aiExtractionEnabled: before!.a, externalLlmEnabled: before!.e, llmDailyCallLimit: before!.l }, after: { aiExtractionEnabled: aiNext, externalLlmEnabled: extNext, llmDailyCallLimit: limitNext },
       });
     });
   } catch (e) { friendlyDbError(e); }
@@ -69,8 +75,8 @@ export async function listUsers(ctx: ServiceContext) {
 }
 
 const userFields = {
-  name: z.string().trim().min(2).max(120),
-  title: z.string().trim().max(120).default(""),
+  name: z.string().regex(NO_CONTROL_CHARS, NO_CONTROL_MESSAGE).trim().min(2).max(120),
+  title: z.string().regex(NO_CONTROL_CHARS, NO_CONTROL_MESSAGE).trim().max(120).default(""),
   role: z.enum(ROLES),
   departmentId: z.string().uuid().nullable().default(null),
   entityId: z.string().uuid().nullable().default(null),
@@ -94,6 +100,7 @@ export async function createUser(ctx: ServiceContext, raw: unknown) {
 }
 
 export async function updateUser(ctx: ServiceContext, userId: string, raw: unknown) {
+  assertUuid(userId, "User");
   assertCan(ctx.session.role, "tenant.admin");
   const patch = updateUserSchema.parse(raw);
   try {

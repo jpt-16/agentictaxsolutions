@@ -29,5 +29,7 @@ export function proxy(req: NextRequest) {
   return res;
 }
 
-// File downloads set their own stricter `sandbox` policy and are excluded here.
-export const config = { matcher: ["/((?!_next/static|_next/image|favicon.ico|api/files/).*)"] };
+// Excluded here: file downloads (they set their own stricter `sandbox` policy) and the upload endpoint. Next buffers any request that
+// passes through this layer and silently truncates the body at 10 MB, which made every file over ~10 MB unreadable. The upload route
+// streams its body through its own hard-capped reader instead (see lib/body-limit.ts), and an API response needs no script nonce.
+export const config = { matcher: ["/((?!_next/static|_next/image|favicon.ico|api/files/|api/submissions).*)"] };

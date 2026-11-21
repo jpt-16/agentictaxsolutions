@@ -73,7 +73,7 @@ class GeminiGateway:
         self._client = genai.Client(api_key=key)
 
     def generate_structured(self, prompt: str, schema: type[T], *, system: str | None = None) -> T:
-        config: dict[str, Any] = {"response_mime_type": "application/json", "response_schema": schema}
+        config: dict[str, Any] = {"response_mime_type": "application/json", "response_schema": schema, "max_output_tokens": 4096}
         if system:
             config["system_instruction"] = redact(system)
         try:
@@ -198,6 +198,30 @@ class FakeGateway:
         if not isinstance(nxt, schema):
             raise LLMError(f"Queued response is {type(nxt).__name__}, expected {schema.__name__}.")
         return nxt
+
+
+class BudgetedGateway:
+    """Wraps any real gateway with hard limits, so no agent can spend more than the job is allowed, whatever the agent does.
+
+    * `max_calls`: model calls this job may make (the smaller of the per-file cap and what is left of the company's daily budget).
+    * `max_prompt_chars`: a single prompt larger than this is refused before anything is sent (bounds the cost of one call).
+    Every attempt that reaches the provider counts, including ones whose answer is later rejected, because the provider still bills.
+    """
+
+    def __init__(self, inner: LLMGateway, max_calls: int, max_prompt_chars: int = 60_000, reason: str = "This job's AI call budget is used up.") -> None:
+        self.inner, self.max_calls, self.max_prompt_chars, self.reason = inner, max(0, max_calls), max_prompt_chars, reason
+        self.attempts = 0
+        self.model = getattr(inner, "model", None)
+
+    def generate_structured(self, prompt: str, schema: type[T], *, system: str | None = None) -> T:
+        if isinstance(self.inner, NullGateway):
+            return self.inner.generate_structured(prompt, schema, system=system)  # nothing is sent, so nothing is counted
+        if self.attempts >= self.max_calls:
+            raise LLMError(self.reason)
+        if len(prompt) + len(system or "") > self.max_prompt_chars:
+            raise LLMError("The text to send to the AI model is larger than the allowed size.")
+        self.attempts += 1
+        return self.inner.generate_structured(prompt, schema, system=system)
 
 
 class NullGateway:

@@ -10,6 +10,13 @@ from .contract import AgentResult, AgentSpec, FileBlob, FileMeta, RelatedProposa
 from .storage import BlobStorage, verify_sha256
 
 
+def read_llm_budget(conn: psycopg.Connection, job_id: UUID, worker_id: str) -> tuple[int, int]:
+    """(daily call limit, calls used in the last 24 hours) for the company that owns the held job."""
+    row = conn.execute("select agent_llm_budget(%s, %s) as d", (job_id, worker_id)).fetchone()
+    d = row["d"]
+    return int(d["limit"]), int(d["used"])
+
+
 class JobFiles:
     """FileAccess implementation: yields the one file the held job refers to, hash-verified."""
 

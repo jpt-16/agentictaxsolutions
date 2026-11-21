@@ -290,3 +290,56 @@ def test_a_reviewer_remap_supersedes_the_pending_proposal_for_that_sheet():
     assert rows[uuid_of(old)]["status"] == "superseded"
     new = next(r for r in rows.values() if r["status"] == "pending")
     assert new["payload"]["method"] == "manual" and new["payload"]["stats"]["row_count"] == 5
+
+
+# ---------------------------------------------------------------------------------------------- spending limits through the real worker
+def _odd_file(n: int) -> bytes:
+    rows = [["Posn", "Bezeichnung X", "Plus", "Minus"], [f"{n}000", "Kasse", 5, 0], ["2000", "Bank", 0, 5], ["3000", "Kapital", 0, 0], ["4000", "Umsatz", 0, 0], ["5000", "Kosten", 0, 0]]
+    return make_xlsx({"S": rows})
+
+
+def test_the_companys_daily_call_limit_stops_external_calls_for_later_files(monkeypatch):
+    """Limit 2. Four files that all need the model; the provider answers garbage (so no useful result, but it still bills)."""
+    monkeypatch.setenv("LLM_MAX_CALLS_PER_JOB", "5")
+    env = Env(ai=True, ext=True)
+    with psycopg.connect(OWNER_URL) as c:
+        c.execute("select set_config('app.tenant_id', %s, true)", (str(env.tenant),))
+        c.execute("update tenants set llm_daily_call_limit = 2")
+        c.commit()
+    gw = FakeGateway()                                   # no queued responses: every call raises, and every call is an attempt
+    jobs = [env.enqueue(env.add_file(_odd_file(i), f"f{i}.xlsx")) for i in range(1, 5)]
+    w = worker(env, gw)
+    while w.run_once():
+        pass
+    runs = env.q("select llm_calls, detail from agent_runs order by created_at")
+    assert [r["llm_calls"] for r in runs] == [1, 1, 0, 0]                            # attempts count even though every answer failed
+    assert all("daily limit of 2 external AI calls has been reached" in r["detail"] for r in runs[2:])
+    assert len(gw.calls) == 2 and len(jobs) == 4                                     # the provider was contacted exactly twice
+
+
+def test_a_limit_of_zero_means_no_external_call_is_ever_made(monkeypatch):
+    env = Env(ai=True, ext=True)
+    with psycopg.connect(OWNER_URL) as c:
+        c.execute("select set_config('app.tenant_id', %s, true)", (str(env.tenant),))
+        c.execute("update tenants set llm_daily_call_limit = 0")
+        c.commit()
+    gw = FakeGateway([LLMMapping(is_trial_balance=True, header_row=1, account_code_col="A", account_name_col="B", debit_col="C", credit_col="D")])
+    env.enqueue(env.add_file(_odd_file(1)))
+    w = worker(env, gw)
+    while w.run_once():
+        pass
+    assert gw.calls == [] and env.q("select llm_calls, detail from agent_runs")[0]["llm_calls"] == 0
+    assert "limit of 0" in env.q("select detail from agent_runs")[0]["detail"]
+
+
+def test_the_per_file_cap_bounds_calls_within_one_workbook(monkeypatch):
+    monkeypatch.setenv("LLM_MAX_CALLS_PER_JOB", "2")
+    env = Env(ai=True, ext=True)
+    odd = [["Posn", "Bezeichnung X", "Plus", "Minus"], ["1000", "Kasse", 5, 0], ["2000", "Bank", 0, 5], ["3000", "Kapital", 0, 0], ["4000", "Umsatz", 0, 0], ["5000", "Kosten", 0, 0]]
+    answer = LLMMapping(is_trial_balance=True, header_row=1, account_code_col="A", account_name_col="B", debit_col="C", credit_col="D")
+    gw = FakeGateway([answer] * 20)
+    env.enqueue(env.add_file(make_xlsx({f"S{i}": odd for i in range(20)})))
+    w = worker(env, gw)
+    while w.run_once():
+        pass
+    assert len(gw.calls) == 2 and env.q("select llm_calls from agent_runs")[0]["llm_calls"] == 2    # 18 sheets never reached the provider

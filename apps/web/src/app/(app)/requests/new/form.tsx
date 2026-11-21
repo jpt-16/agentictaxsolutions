@@ -5,6 +5,7 @@ import { Plus, Trash2, X, Search } from "lucide-react";
 import { DATA_TYPES, DATA_TYPE_LABELS, PRIORITIES, type DataType } from "@taxops/core";
 import { createRequestAction, updateDraftAction } from "../actions";
 import { cn } from "@/components/ui";
+import { safely } from "@/lib/safe-action";
 
 type Option = { id: string; label: string; sub?: string };
 type Kind = "department" | "entity" | "user";
@@ -58,7 +59,7 @@ export function NewRequestForm({ year, departments, entities, people, requestId,
         items: items.filter((i) => i.title.trim()),
         assignees: Object.values(picked).map((p) => ({ type: p.kind, id: p.id })),
       };
-      const res = editing ? await updateDraftAction(requestId!, payload, publish) : await createRequestAction(payload, publish);
+      const res = editing ? await safely(() => updateDraftAction(requestId!, payload, publish)) : await safely(() => createRequestAction(payload, publish));
       if (!res.ok) { setError(res.error); setFieldErrors(res.fieldErrors ?? {}); return; }
       const { id, publishError } = res.data!;
       router.push(`/requests/${id}${publishError ? `?notice=${encodeURIComponent("Saved as a draft. " + publishError)}` : ""}`);

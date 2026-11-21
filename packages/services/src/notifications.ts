@@ -1,7 +1,7 @@
 import { and, desc, eq, inArray, isNull, sql } from "drizzle-orm";
 import { can, daysUntil, isOverdue, todayIso, type Permission, type Role, ROLES } from "@taxops/core";
 import { assignments, notifications, requests, tenants, users, withTenant, type Db, type Tx } from "@taxops/db";
-import { scoped, type ServiceContext } from "./context";
+import { scoped, type ServiceContext, assertUuid } from "./context";
 
 export interface NotificationInput { type: string; title: string; body?: string; link?: string; dedupeKey?: string }
 
@@ -54,6 +54,7 @@ export async function unreadCount(ctx: ServiceContext): Promise<number> {
 
 /** Row-level security means these can only ever touch the caller's own notifications. */
 export async function markRead(ctx: ServiceContext, id: string): Promise<void> {
+  assertUuid(id, "Notification");
   await scoped(ctx, (tx) => tx.update(notifications).set({ readAt: new Date() }).where(and(eq(notifications.id, id), isNull(notifications.readAt))));
 }
 export async function markAllRead(ctx: ServiceContext): Promise<void> {

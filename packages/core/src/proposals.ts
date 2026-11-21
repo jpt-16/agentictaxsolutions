@@ -58,7 +58,7 @@ export type DocumentPayload = z.infer<typeof documentPayloadSchema>;
 export const decideProposalSchema = z
   .object({
     decision: z.enum(["accepted", "rejected"]),
-    note: z.string().trim().max(2000).default(""),
+    note: z.string().regex(/^[^\u0000-\u0008\u000B\u000C\u000E-\u001F\u007F]*$/, "Contains characters that are not allowed").trim().max(2000).default(""),
   })
   .refine((v) => v.decision === "accepted" || v.note.length >= 3, { message: "Explain why you are rejecting this result", path: ["note"] });
 

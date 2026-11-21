@@ -5,6 +5,7 @@ import { ROLES, ROLE_LABELS, type Role } from "@taxops/core";
 import { useConfirm, useToast } from "@/components/overlays";
 import { createUserAction, updateUserAction } from "./actions";
 import { Badge } from "@/components/ui";
+import { safely } from "@/lib/safe-action";
 
 interface U { id: string; name: string; email: string; title: string; role: Role; isActive: boolean; departmentId: string | null; entityId: string | null; department: string | null; entity: string | null }
 interface Opt { id: string; name: string }
@@ -17,7 +18,7 @@ function Row({ u, depts, ents, self }: { u: U; depts: Opt[]; ents: Opt[]; self: 
   const dirty = role !== u.role || dept !== (u.departmentId ?? "") || ent !== (u.entityId ?? "");
   const confirm = useConfirm();
   const toast = useToast();
-  const run = (patch: Record<string, unknown>, ok: string) => { setMsg(null); start(async () => { const r = await updateUserAction(u.id, patch); if (r.ok) toast(`${u.name}: ${ok.toLowerCase()}`); else setMsg(r.error); }); };
+  const run = (patch: Record<string, unknown>, ok: string) => { setMsg(null); start(async () => { const r = await safely(() => updateUserAction(u.id, patch)); if (r.ok) toast(`${u.name}: ${ok.toLowerCase()}`); else setMsg(r.error); }); };
   return (
     <tr className={u.isActive ? "" : "opacity-60"}>
       <td><p className="font-medium text-ink">{u.name}{self && <span className="ml-1.5 text-[11px] font-normal text-muted">(you)</span>}</p><p className="text-[12px] text-muted">{u.email}</p></td>
@@ -44,13 +45,13 @@ export function UsersTable({ users, depts, ents, selfId }: { users: U[]; depts: 
     <div>
       <div className="overflow-x-auto">
         <table className="tbl !text-[13px]">
-          <thead><tr><th>Person</th><th>Role</th><th>Department</th><th>Entity</th><th /></tr></thead>
+          <thead><tr><th>Person</th><th>Role</th><th>Department</th><th>Entity</th><th><span className="sr-only">Actions</span></th></tr></thead>
           <tbody>{users.map((u) => <Row key={u.id} u={u} depts={depts} ents={ents} self={u.id === selfId} />)}</tbody>
         </table>
       </div>
       <div className="border-t border-line px-5 py-4">
         {!open ? <button className="btn btn-secondary btn-sm" onClick={() => setOpen(true)}><UserPlus size={13} aria-hidden /> Add a person</button> : (
-          <form className="grid gap-3 sm:grid-cols-3" onSubmit={(e) => { e.preventDefault(); setErr(null); start(async () => { const r = await createUserAction({ ...f, departmentId: f.departmentId || null, entityId: f.entityId || null }); if (!r.ok) setErr(r.error); else { setOpen(false); setF({ name: "", email: "", title: "", role: "contributor", departmentId: "", entityId: "" }); } }); }}>
+          <form className="grid gap-3 sm:grid-cols-3" onSubmit={(e) => { e.preventDefault(); setErr(null); start(async () => { const r = await safely(() => createUserAction({ ...f, departmentId: f.departmentId || null, entityId: f.entityId || null })); if (!r.ok) setErr(r.error); else { setOpen(false); setF({ name: "", email: "", title: "", role: "contributor", departmentId: "", entityId: "" }); } }); }}>
             <div><label className="label" htmlFor="nu-name">Name</label><input id="nu-name" className="field" required value={f.name} onChange={(e) => setF({ ...f, name: e.target.value })} /></div>
             <div><label className="label" htmlFor="nu-email">Work email</label><input id="nu-email" type="email" className="field" required value={f.email} onChange={(e) => setF({ ...f, email: e.target.value })} /></div>
             <div><label className="label" htmlFor="nu-title">Job title</label><input id="nu-title" className="field" value={f.title} onChange={(e) => setF({ ...f, title: e.target.value })} /></div>

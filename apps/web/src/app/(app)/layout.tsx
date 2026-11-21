@@ -26,7 +26,7 @@ export default async function AppLayout({ children }: { children: React.ReactNod
   return (
     <OverlayProvider>
       <div className="min-h-screen lg:grid lg:grid-cols-[256px_1fr]">
-        <aside className="sidebar material-thick hidden lg:sticky lg:top-0 lg:block lg:h-screen">
+        <aside aria-label="Sidebar" className="sidebar material-thick hidden lg:sticky lg:top-0 lg:block lg:h-screen">
           <div className="flex h-full flex-col px-3 py-5">
             <div className="mb-6 flex items-center gap-2.5 px-2">
               <span className="flex h-8 w-8 items-center justify-center rounded-[9px]" style={{ background: "var(--accent-solid)", color: "#fff" }}>
@@ -54,7 +54,7 @@ export default async function AppLayout({ children }: { children: React.ReactNod
         </aside>
         <div className="min-w-0 pb-[calc(76px+env(safe-area-inset-bottom,0px))] lg:pb-0">
           {devAuthEnabled() && (
-            <div className="px-6 py-1.5 text-center text-[12px] font-medium" style={{ background: "var(--amber-bg)", color: "var(--amber-fg)" }}>
+            <div role="region" aria-label="Environment" className="px-6 py-1.5 text-center text-[12px] font-medium" style={{ background: "var(--amber-bg)", color: "var(--amber-fg)" }}>
               Development environment · fictional data only
             </div>
           )}

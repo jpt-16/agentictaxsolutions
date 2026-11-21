@@ -4,6 +4,7 @@ import { useRouter } from "next/navigation";
 import { Check, LayoutTemplate, MessageSquarePlus, Paperclip, RotateCcw, Send, X } from "lucide-react";
 import { useConfirm, useToast } from "@/components/overlays";
 import { addCommentAction, closeRequestAction, publishRequestAction, reviewItemAction, saveTemplateAction } from "../actions";
+import { safely } from "@/lib/safe-action";
 
 function ErrorLine({ msg }: { msg: string | null }) {
   return msg ? <p role="alert" className="mt-2 text-[12.5px]" style={{ color: "var(--red-fg)" }}>{msg}</p> : null;
@@ -17,7 +18,7 @@ export function RequestActions({ requestId, canPublish, canClose }: { requestId:
   const run = async (fn: () => ReturnType<typeof publishRequestAction>, o: { title: string; message: string; confirmLabel: string; done: string }) => {
     if (!(await confirm({ title: o.title, message: o.message, confirmLabel: o.confirmLabel }))) return;
     setError(null);
-    start(async () => { const r = await fn(); if (!r.ok) setError(r.error); else toast(o.done); });
+    start(async () => { const r = await safely(fn); if (!r.ok) setError(r.error); else toast(o.done); });
   };
   if (!canPublish && !canClose) return null;
   return (
@@ -116,7 +117,7 @@ export function ReviewForm({ requestId, itemId }: { requestId: string; itemId: s
   const [error, setError] = useState<string | null>(null);
   const decide = (decision: "approved" | "changes_requested") => {
     setError(null);
-    start(async () => { const r = await reviewItemAction(requestId, itemId, decision, rationale); if (!r.ok) setError(r.error); else setRationale(""); });
+    start(async () => { const r = await safely(() => reviewItemAction(requestId, itemId, decision, rationale)); if (!r.ok) setError(r.error); else setRationale(""); });
   };
   return (
     <div className="mt-3 rounded-lg border border-line bg-surface2 p-3">
@@ -142,7 +143,7 @@ export function CommentForm({ requestId }: { requestId: string }) {
   const [error, setError] = useState<string | null>(null);
   return (
     <form className="border-t border-line p-4"
-      onSubmit={(e) => { e.preventDefault(); setError(null); start(async () => { const r = await addCommentAction(requestId, body); if (!r.ok) setError(r.error); else setBody(""); }); }}>
+      onSubmit={(e) => { e.preventDefault(); setError(null); start(async () => { const r = await safely(() => addCommentAction(requestId, body)); if (!r.ok) setError(r.error); else setBody(""); }); }}>
       <label className="label" htmlFor="comment">Add a comment</label>
       <textarea id="comment" className="field" value={body} onChange={(e) => setBody(e.target.value)} maxLength={4000} placeholder="Ask a question or leave a note. Type @ and a full name to notify someone." />
       <div className="mt-2 flex justify-end">
@@ -164,7 +165,7 @@ export function SaveAsTemplate({ requestId, defaultName }: { requestId: string; 
   return (
     <form className="flex flex-wrap items-center gap-2" onSubmit={(e) => {
       e.preventDefault(); setError(null);
-      start(async () => { const r = await saveTemplateAction(requestId, name); if (r.ok) { toast("Template saved"); setOpen(false); } else setError(r.error); });
+      start(async () => { const r = await safely(() => saveTemplateAction(requestId, name)); if (r.ok) { toast("Template saved"); setOpen(false); } else setError(r.error); });
     }}>
       <label className="sr-only" htmlFor="tpl-name">Template name</label>
       <input id="tpl-name" className="field !w-56" value={name} onChange={(e) => setName(e.target.value)} maxLength={120} autoFocus aria-invalid={error ? true : undefined} />

@@ -25,7 +25,7 @@ export default async function SettingsPage() {
         {tenant && (
           <Card>
             <CardHeader title="Data & AI governance" subtitle="You decide whether AI agents work on your files, and whether anything may leave this system." />
-            <GovernanceForm ai={tenant.aiExtractionEnabled} external={tenant.externalLlmEnabled} />
+            <GovernanceForm ai={tenant.aiExtractionEnabled} external={tenant.externalLlmEnabled} limit={tenant.llmDailyCallLimit} used={tenant.llmCallsLast24h} />
           </Card>
         )}
         {people && (

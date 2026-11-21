@@ -5,7 +5,7 @@ import { resolve } from "node:path";
 import { eq, sql } from "drizzle-orm";
 import { agentRuns, auditEvents, connect, extractedRows, jobs, proposals, withTenant, type Connection } from "@taxops/db";
 import { createFileFixture, createTestTenant, TEST_APP_URL, TEST_OWNER_URL, type FileFixture, type TestTenant } from "@taxops/db/src/testing";
-import { databaseNowMs, addComment, createRequest, listNotifications, mentionedUsers, publishRequest, archiveTemplate, createTemplateFromRequest, getTemplate, listTemplates, approvedDataPack, csvOf, decideProposal, exportStatusReportCsv, loadSession, requestStatusReport, DATA_PACK_COLUMNS, type ServiceContext } from "./index";
+import { MAX_FILES_PER_TENANT_PER_DAY, MemoryStorage, EicarScanner, submitWithFiles, getTenantSettings, updateTenantSettings, databaseNowMs, addComment, createRequest, listNotifications, mentionedUsers, publishRequest, archiveTemplate, createTemplateFromRequest, getTemplate, listTemplates, approvedDataPack, csvOf, decideProposal, exportStatusReportCsv, loadSession, requestStatusReport, DATA_PACK_COLUMNS, type ServiceContext } from "./index";
 
 const golden = JSON.parse(readFileSync(resolve(__dirname, "../../../schemas/fixtures/extraction_proposal.json"), "utf8"));
 const docGolden = JSON.parse(readFileSync(resolve(__dirname, "../../../schemas/fixtures/document_proposal.json"), "utf8"));
@@ -172,5 +172,49 @@ describe("review fixes", () => {
   it("session timestamps come from the database clock", async () => {
     const t = await databaseNowMs(app.db);
     expect(Math.abs(t - Date.now())).toBeLessThan(10_000);
+  });
+});
+
+describe("daily AI call limit setting", () => {
+  it("only a tenant admin can change it, within range, with an audit entry; usage in the last 24 hours is shown", async () => {
+    const f = await createFileFixture(owner, A, "limit.xlsx");
+    await withTenant(owner.db, { tenantId: A.tenantId }, async (tx) => {
+      const id = randomUUID(), jobId = randomUUID();
+      await tx.execute(sql`insert into jobs (id, tenant_id, type, payload, status) values (${jobId}, ${A.tenantId}, 'file.uploaded', '{}', 'succeeded')`);
+      await tx.insert(agentRuns).values({ id, tenantId: A.tenantId, jobId, agentName: "extraction", agentVersion: "1", event: "file.uploaded", fileId: f.fileId, status: "succeeded", llmCalls: 4 });
+    });
+    const admin = await ctxFor(A, A.users.admin);
+    const before = await getTenantSettings(admin);
+    expect(before.llmDailyCallLimit).toBe(200); expect(before.llmCallsLast24h).toBeGreaterThanOrEqual(4);
+    await updateTenantSettings(admin, { llmDailyCallLimit: 25 });
+    expect((await getTenantSettings(admin)).llmDailyCallLimit).toBe(25);
+    for (const bad of [-1, 1.5, 100001, "10"]) await expect(updateTenantSettings(admin, { llmDailyCallLimit: bad })).rejects.toThrow();
+    for (const role of [A.users.manager, A.users.reviewer, A.users.contributor, A.users.auditor]) await expect(updateTenantSettings(await ctxFor(A, role), { llmDailyCallLimit: 1 })).rejects.toThrow(/not allowed|permission|forbidden/i);
+    expect((await getTenantSettings(admin)).llmDailyCallLimit).toBe(25);
+    const acts = await withTenant(owner.db, { tenantId: A.tenantId }, (tx) => tx.select({ s: auditEvents.summary }).from(auditEvents).where(eq(auditEvents.action, "tenant.settings_updated")));
+    expect(acts.some((x) => /daily external AI call limit 25/.test(x.s))).toBe(true);
+  });
+});
+
+describe("daily upload cap", () => {
+  it("a company cannot upload more than its daily limit of files, and the refusal says so", async () => {
+    const mgr = await ctxFor(A, A.users.manager);
+    const r = await createRequest(mgr, { title: "Upload cap", taxYear: 2025, dueDate: "2027-01-01", items: [{ title: "Item", dataType: "other" }], assignees: [{ type: "department", id: A.departmentId }] });
+    await publishRequest(mgr, r.id);
+    const itemId = (await withTenant(owner.db, { tenantId: A.tenantId }, (tx) => tx.execute(sql`select id from request_items where request_id = ${r.id}`))).rows[0]!.id as string;
+    const f = await createFileFixture(owner, A, "base.xlsx");                       // gives us a submission to hang bulk rows on
+    await withTenant(owner.db, { tenantId: A.tenantId }, (tx) => tx.execute(sql`
+      insert into files (id, tenant_id, submission_id, original_name, content_type, size_bytes, sha256, storage_key, scanner, scanned_at, uploaded_by)
+      select gen_random_uuid(), ${A.tenantId}, ${f.submissionId}, 'bulk' || g, 'text/plain', 1, repeat('a', 64), 'bulk/' || gen_random_uuid(), 'test', now(), ${A.users.contributor}
+        from generate_series(1, ${MAX_FILES_PER_TENANT_PER_DAY}) g`));
+    const deps = { storage: new MemoryStorage(), scanner: new EicarScanner() };
+    await expect(submitWithFiles(await ctxFor(A, A.users.contributor), deps, itemId, { note: "one more" }, [{ name: "a.txt", bytes: Buffer.from("hello") }]))
+      .rejects.toThrow(/limit of 2000 uploaded files in 24 hours/);
+    // another company is unaffected
+    const mgrB = await ctxFor(B, B.users.manager);
+    const rb = await createRequest(mgrB, { title: "Other company", taxYear: 2025, dueDate: "2027-01-01", items: [{ title: "Item", dataType: "other" }], assignees: [{ type: "department", id: B.departmentId }] });
+    await publishRequest(mgrB, rb.id);
+    const itemB = (await withTenant(owner.db, { tenantId: B.tenantId }, (tx) => tx.execute(sql`select id from request_items where request_id = ${rb.id}`))).rows[0]!.id as string;
+    await expect(submitWithFiles(await ctxFor(B, B.users.contributor), deps, itemB, { note: "fine" }, [{ name: "a.txt", bytes: Buffer.from("hello") }])).resolves.toBeTruthy();
   });
 });

@@ -172,6 +172,23 @@ The three items first accepted as known risks were fixed afterwards:
 | 8 | Low | Rate limits trusted a client-forgeable `X-Forwarded-For` | The header is believed only through `TRUSTED_PROXY_HOPS` proxies you run (entry taken from the right); default 0 ignores it. Production refuses to start unless the variable is set. |
 | 16 | Low | The dev sign-in helper function shipped in the schema | Dropped by migration; `db:seed`/`db:reset` install it for local development only, so a production database never has it. |
 
+## Security checklist pass (spending, requests, input, resilience, devices)
+
+A full checklist pass was run against a live instance (probe scripts, not unit tests alone). Evidence is in the test suites noted below.
+
+| Area | Result |
+|---|---|
+| **Paid-API spending** | Three independent caps: per-file call cap (`LLM_MAX_CALLS_PER_JOB`, default 5, counted even when answers are rejected), prompt-size cap (`LLM_MAX_PROMPT_CHARS`, 60000), and a per-tenant rolling 24 h call limit (admin setting `llm_daily_call_limit`, default 200, 0 = never call out) read by the worker through `agent_llm_budget`. Proven end to end: limit 2 with 4 files made exactly 2 provider calls. Also set a hard cap in the provider console as the backstop. |
+| **Request limits** | Server actions 240/min per person and 40/min per action; uploads 10/min and 120/hour per person; 2000 files per tenant per day; exports and auth limited as before. |
+| **Input handling** | Hostile-input sweep (`security-fuzz.test.ts`) found NUL bytes, impossible dates (2027-02-30), malformed ids and unvalidated filters reaching the database as 500s; all now rejected with clear messages. Empty (0-byte) uploads are refused; uploads over 10 MB no longer truncate (route excluded from the proxy body buffer). |
+| **Logic and races** | `concurrency.test.ts`: double submit, simultaneous decisions, parallel uploads. Replay of server actions with wrong roles or tampered ids is refused. |
+| **Resilience** | A dropped connection mid-action used to replace the page with the error screen and lose typed text. All client calls now go through `safely()` (inline message, form kept); regression step in the e2e smoke test. Production error responses leak no internals. |
+| **Devices** | axe (WCAG 2 A/AA + best practice) clean on every page in light and dark at desktop and 375 px; contrast tokens darkened; phone overflow on the request page fixed; keyboard focus visible on every stop; no overflow at 320 px; empty accounts for every role render without errors. |
+
+Not run: OWASP ZAP / Burp, Lighthouse, WebKit/Safari (not installed in the test environment), expired-token path (needs the signing secret), real-IdP SSO callback replay.
+
+**Accepted residual risk:** identity and tenant reach the database through session settings the application sets, so a SQL injection bug would equal tenant compromise. All queries are parameterized and the fuzz sweep found no injection, but keep it that way.
+
 ## Known limitations (read before production)
 
 **Security and identity**

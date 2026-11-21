@@ -213,3 +213,36 @@ describe("agent_save_results retirement is scoped to the saving agent", () => {
     expect(await status(v!)).toBe("pending");                                       // the validation finding survives
   });
 });
+
+describe("agent_llm_budget (spending limit visible to the worker)", () => {
+  const budget = async (job: string, who = "w1") => ((await worker.db.execute(sql`select agent_llm_budget(${job}::uuid, ${who}) as d`)).rows[0] as any).d;
+  const run = async (t: TestTenant, f: FileFixture, calls: number, hoursAgo = 0) => {
+    const id = randomUUID(), jobId = randomUUID();
+    await withTenant(owner.db, { tenantId: t.tenantId }, async (tx) => {
+      await tx.execute(sql`insert into jobs (id, tenant_id, type, payload, status) values (${jobId}, ${t.tenantId}, 'file.uploaded', '{}', 'succeeded')`);
+      await tx.insert(s.agentRuns).values({ id, tenantId: t.tenantId, jobId, agentName: "extraction", agentVersion: "1", event: "file.uploaded", fileId: f.fileId, status: "succeeded", llmCalls: calls });
+      await tx.execute(sql`update agent_runs set created_at = now() - make_interval(hours => ${hoursAgo}) where id = ${id}`);
+    });
+  };
+
+  it("reports the company's limit and the calls made in the last 24 hours only, for its own tenant only", async () => {
+    const f = await createFileFixture(owner, A), fb = await createFileFixture(owner, B);
+    await run(A, f, 3); await run(A, f, 2, 5); await run(A, f, 40, 48);            // the 48-hour-old run does not count
+    await run(B, fb, 99);                                                           // another company's usage is invisible
+    await withTenant(owner.db, { tenantId: A.tenantId }, (tx) => tx.execute(sql`update tenants set llm_daily_call_limit = 7`));
+    const job = await validationJob(A, f, await extractionOf(A, f, "trial_balance"));
+    expect(await budget(job)).toEqual({ limit: 7, used: 5 });
+  });
+
+  it("is bound to the held job, and the app role cannot call it", async () => {
+    const f = await createFileFixture(owner, A);
+    const job = await validationJob(A, f, await extractionOf(A, f, "trial_balance"));
+    await expectDbError(worker.db.execute(sql`select agent_llm_budget(${job}::uuid, 'intruder')`), /not held by this worker/);
+    await expectDbError(app.db.execute(sql`select agent_llm_budget(${job}::uuid, 'w1')`), /permission denied/i);
+  });
+
+  it("the limit has a sane range and only the admin-controlled column is writable by the app", async () => {
+    for (const bad of [-1, 100001]) await expectDbError(withTenant(owner.db, { tenantId: A.tenantId }, (tx) => tx.execute(sql`update tenants set llm_daily_call_limit = ${bad}`)), /check constraint|tenants_llm_daily_call_limit_range/i);
+    await expectDbError(withTenant(app.db, { tenantId: A.tenantId, userId: A.users.reviewer }, (tx) => tx.execute(sql`update tenants set llm_daily_call_limit = 100000`)), /only tenant admins|administer|permission/i);
+  });
+});

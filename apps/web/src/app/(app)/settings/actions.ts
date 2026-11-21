@@ -11,9 +11,9 @@ export async function updateRuleAction(ruleId: string, enabled: boolean, params:
   return r;
 }
 
-export async function updateTenantSettingsAction(aiExtractionEnabled: boolean, externalLlmEnabled: boolean): Promise<ActionResult> {
+export async function updateTenantSettingsAction(aiExtractionEnabled: boolean, externalLlmEnabled: boolean, llmDailyCallLimit: number): Promise<ActionResult> {
   const ctx = await requireContext();
-  const r = await guard(() => updateTenantSettings(ctx, { aiExtractionEnabled, externalLlmEnabled }));
+  const r = await guard(() => updateTenantSettings(ctx, { aiExtractionEnabled, externalLlmEnabled, llmDailyCallLimit }));
   revalidatePath("/settings");
   return r;
 }

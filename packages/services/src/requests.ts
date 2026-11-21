@@ -1,7 +1,7 @@
 import { and, asc, desc, eq, ilike, inArray, or, sql, type SQL } from "drizzle-orm";
 import {
   assertCan, assertCanClose, REQUEST_STATUS_LABELS, assertCanPublish, assertItemTransition, can, canViewRequest, createRequestSchema,
-  commentSchema, daysUntil, deriveRequestStatus, isOverdue, reviewItemSchema, submitItemSchema,
+  commentSchema, REQUEST_STATUSES, daysUntil, deriveRequestStatus, isOverdue, reviewItemSchema, submitItemSchema,
   violatesSegregationOfDuties, ForbiddenError, InvalidTransitionError,
   type Actor, type AssigneeRef, type ItemStatus, type RequestStatus,
 } from "@taxops/core";
@@ -14,7 +14,7 @@ import { extractionByFile, findingsForRequest } from "./proposals";
 import { assigneesOfRequest, notify, usersWithPermission } from "./notifications";
 import { isPreviewable } from "./files/validate";
 import { mentionedUsers } from "./mentions";
-import { actorOf, auditActorOf, NotFoundError, scoped, todayOf, type ServiceContext } from "./context";
+import { actorOf, assertUuid, auditActorOf, cleanQuery, clampInt, NotFoundError, scoped, todayOf, type ServiceContext } from "./context";
 
 /* ------------------------------------------------------------------ visibility */
 
@@ -39,6 +39,7 @@ async function assigneeRefs(tx: Tx, requestId: string): Promise<AssigneeRef[]> {
 
 /** Loads a request the actor may see, or throws NotFound (never reveals that a hidden request exists). */
 export async function loadVisibleRequest(tx: Tx, ctx: ServiceContext, requestId: string, lock = false) {
+  assertUuid(requestId, "Request");
   const q = tx.select().from(requests).where(eq(requests.id, requestId));
   const [req] = lock ? await q.for("update") : await q;
   if (!req) throw new NotFoundError("Request");
@@ -64,11 +65,13 @@ export async function listRequests(ctx: ServiceContext, f: RequestListFilters = 
   const today = todayOf(ctx);
   return scoped(ctx, async (tx) => {
     const conds: (SQL | undefined)[] = [visibleRequestsFilter(actorOf(ctx))];
-    if (f.status === "overdue") conds.push(sql`${requests.dueDate} < ${today} and ${requests.status} not in ('draft','approved','closed')`);
-    else if (f.status === "active") conds.push(sql`${requests.status} not in ('draft','closed')`);
-    else if (f.status) conds.push(eq(requests.status, f.status));
-    if (f.q?.trim()) {
-      const like = `%${f.q.trim().replace(/[%_\\]/g, "\\$&")}%`;
+    const q = cleanQuery(f.q);
+    const status = typeof f.status === "string" && (["overdue", "active", ...REQUEST_STATUSES] as string[]).includes(f.status) ? f.status : undefined; // anything else is no filter
+    if (status === "overdue") conds.push(sql`${requests.dueDate} < ${today} and ${requests.status} not in ('draft','approved','closed')`);
+    else if (status === "active") conds.push(sql`${requests.status} not in ('draft','closed')`);
+    else if (status) conds.push(eq(requests.status, status as RequestStatus));
+    if (q) {
+      const like = `%${q.replace(/[%_\\]/g, "\\$&")}%`;
       conds.push(or(ilike(requests.title, like), ilike(requests.reference, like)));
     }
     const where = and(...conds);
@@ -76,7 +79,7 @@ export async function listRequests(ctx: ServiceContext, f: RequestListFilters = 
     const finishedLast = sql`case when ${requests.status} in ('approved', 'closed') then 1 else 0 end`;
     const order = f.sort === "title" ? [asc(requests.title)] : f.sort === "created" ? [desc(requests.createdAt)] : [finishedLast, asc(requests.dueDate)];
     const rows = await tx.select().from(requests).where(where).orderBy(...order, asc(requests.reference))
-      .limit(Math.min(f.limit ?? 50, 200)).offset(f.offset ?? 0);
+      .limit(clampInt(f.limit, 50, 1, 200)).offset(clampInt(f.offset, 0, 0, 1_000_000));
     const total = (await tx.select({ n: sql<number>`count(*)::int` }).from(requests).where(where))[0]!.n;
     if (rows.length === 0) return { rows: [], total };
 
@@ -137,6 +140,7 @@ const kindFromName = (n: string) => (n.split(".").pop() ?? "").toLowerCase();
 /* ------------------------------------------------------------------ detail */
 
 export async function getRequestDetail(ctx: ServiceContext, requestId: string) {
+  assertUuid(requestId, "Request");
   assertCanRead(ctx);
   const today = todayOf(ctx);
   const actor = actorOf(ctx);
@@ -270,6 +274,7 @@ export async function createRequest(ctx: ServiceContext, rawInput: unknown) {
 }
 
 export async function publishRequest(ctx: ServiceContext, requestId: string) {
+  assertUuid(requestId, "Request");
   assertCan(ctx.session.role, "request.publish");
   return scoped(ctx, async (tx) => {
     const { req, refs } = await loadVisibleRequest(tx, ctx, requestId, true);
@@ -287,6 +292,7 @@ export async function publishRequest(ctx: ServiceContext, requestId: string) {
 }
 
 export async function closeRequest(ctx: ServiceContext, requestId: string) {
+  assertUuid(requestId, "Request");
   assertCan(ctx.session.role, "request.close");
   return scoped(ctx, async (tx) => {
     const { req } = await loadVisibleRequest(tx, ctx, requestId, true);
@@ -334,6 +340,7 @@ function assertWorkable(status: RequestStatus) {
 }
 
 export async function submitItem(ctx: ServiceContext, itemId: string, rawInput: unknown, attachments: StoredFile[] = []) {
+  assertUuid(itemId, "Item");
   assertCan(ctx.session.role, "item.submit");
   const input = submitItemSchema.parse(rawInput);
   return scoped(ctx, async (tx) => {
@@ -368,6 +375,7 @@ export async function submitItem(ctx: ServiceContext, itemId: string, rawInput: 
 }
 
 export async function reviewItem(ctx: ServiceContext, itemId: string, rawInput: unknown) {
+  assertUuid(itemId, "Item");
   assertCan(ctx.session.role, "item.review");
   const input = reviewItemSchema.parse(rawInput);
   return scoped(ctx, async (tx) => {
@@ -402,6 +410,7 @@ export async function reviewItem(ctx: ServiceContext, itemId: string, rawInput: 
 /* ------------------------------------------------------------------ comments */
 
 export async function addComment(ctx: ServiceContext, requestId: string, rawInput: unknown) {
+  assertUuid(requestId, "Request");
   assertCan(ctx.session.role, "comment.create");
   const input = commentSchema.parse(rawInput);
   return scoped(ctx, async (tx) => {
@@ -445,6 +454,7 @@ async function notifyMentions(tx: Tx, ctx: ServiceContext, req: { id: string; re
 
 /** Edit a DRAFT request in place (title, dates, items, assignees). Published requests are read-only: the database also refuses deletes then. */
 export async function updateDraftRequest(ctx: ServiceContext, requestId: string, rawInput: unknown) {
+  assertUuid(requestId, "Request");
   assertCan(ctx.session.role, "request.update");
   const input = createRequestSchema.parse(rawInput);
   return scoped(ctx, async (tx) => {

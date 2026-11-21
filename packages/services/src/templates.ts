@@ -1,14 +1,15 @@
 import { and, asc, eq, isNull } from "drizzle-orm";
-import { assertCan, itemInputSchema } from "@taxops/core";
+import { assertCan, itemInputSchema, NO_CONTROL_CHARS, NO_CONTROL_MESSAGE } from "@taxops/core";
 import { recordAudit, requestItems, requests, requestTemplates } from "@taxops/db";
 import { z } from "zod";
-import { auditActorOf, NotFoundError, scoped, type ServiceContext } from "./context";
+import { auditActorOf, NotFoundError, scoped, type ServiceContext, assertUuid } from "./context";
 
-const nameSchema = z.string().trim().min(3, "Give the template a name of at least 3 characters").max(120);
+const nameSchema = z.string().regex(NO_CONTROL_CHARS, NO_CONTROL_MESSAGE).trim().min(3, "Give the template a name of at least 3 characters").max(120);
 const storedItems = z.array(itemInputSchema).min(1).max(100);
 
 /** A template keeps what a request ASKS for (title, items), never who it goes to, when it is due, or any submitted data. */
 export async function createTemplateFromRequest(ctx: ServiceContext, requestId: string, rawName: unknown) {
+  assertUuid(requestId, "Request");
   assertCan(ctx.session.role, "request.create");
   const name = nameSchema.parse(rawName);
   return scoped(ctx, async (tx) => {
@@ -36,6 +37,7 @@ export async function listTemplates(ctx: ServiceContext) {
 }
 
 export async function getTemplate(ctx: ServiceContext, id: string) {
+  assertUuid(id, "Template");
   assertCan(ctx.session.role, "request.create");
   return scoped(ctx, async (tx) => {
     const [t] = await tx.select().from(requestTemplates).where(and(eq(requestTemplates.id, id), isNull(requestTemplates.archivedAt)));
@@ -47,6 +49,7 @@ export async function getTemplate(ctx: ServiceContext, id: string) {
 }
 
 export async function archiveTemplate(ctx: ServiceContext, id: string) {
+  assertUuid(id, "Template");
   assertCan(ctx.session.role, "request.create");
   return scoped(ctx, async (tx) => {
     const done = await tx.update(requestTemplates).set({ archivedAt: new Date() }).where(and(eq(requestTemplates.id, id), isNull(requestTemplates.archivedAt)))

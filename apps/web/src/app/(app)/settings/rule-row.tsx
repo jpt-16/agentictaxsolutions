@@ -2,6 +2,7 @@
 import { useState, useTransition } from "react";
 import { updateRuleAction } from "./actions";
 import { SeverityBadge } from "@/components/ui";
+import { safely } from "@/lib/safe-action";
 
 interface Props {
   id: string; name: string; description: string; severity: string; enabled: boolean; params: Record<string, string>; defaults: Record<string, string>; customized: boolean; editable: boolean;
@@ -39,7 +40,7 @@ export function RuleRow(r: Props) {
       {r.editable && (
         <div className="mt-3 flex items-center gap-3">
           <button className="btn btn-secondary btn-sm" disabled={!dirty || pending}
-            onClick={() => { setMsg(null); start(async () => { const res = await updateRuleAction(r.id, enabled, params); setMsg(res.ok ? { ok: true, text: "Saved. Applies the next time validation runs." } : { ok: false, text: res.error }); }); }}>
+            onClick={() => { setMsg(null); start(async () => { const res = await safely(() => updateRuleAction(r.id, enabled, params)); setMsg(res.ok ? { ok: true, text: "Saved. Applies the next time validation runs." } : { ok: false, text: res.error }); }); }}>
             {pending ? "Saving…" : "Save"}
           </button>
           {msg && <span role={msg.ok ? "status" : "alert"} className="text-[12.5px]" style={{ color: msg.ok ? "var(--green-fg)" : "var(--red-fg)" }}>{msg.text}</span>}

@@ -1,7 +1,7 @@
 import { and, asc, eq, inArray, ne } from "drizzle-orm";
 import { assertCan, daysUntil, isOverdue, REQUEST_STATUSES, type RequestStatus } from "@taxops/core";
 import { extractedRows, files, proposals, recordAudit, requestItems, requests, users } from "@taxops/db";
-import { auditActorOf, NotFoundError, scoped, todayOf, type ServiceContext } from "./context";
+import { auditActorOf, NotFoundError, scoped, todayOf, type ServiceContext, assertUuid } from "./context";
 
 const FORMULA = /^[=+\-@\t\r]/;
 const PLAIN_NUMBER = /^[-+]?\d+(\.\d+)?$/; // a bare number cannot be a formula, so negative amounts keep their sign
@@ -74,6 +74,7 @@ export const DATA_PACK_COLUMNS = ["request", "item", "file", "sheet", "currency"
  * Only accepted trial-balance extractions are included: nothing a reviewer has not signed off on leaves the system.
  */
 export async function approvedDataPack(ctx: ServiceContext, requestId: string): Promise<{ reference: string; rows: Record<string, unknown>[] }> {
+  assertUuid(requestId, "Request");
   assertCan(ctx.session.role, "report.read");
   return scoped(ctx, async (tx) => {
     const [req] = await tx.select({ id: requests.id, reference: requests.reference }).from(requests).where(eq(requests.id, requestId));

@@ -261,7 +261,7 @@ describe("write access is pinned to exactly what the application needs", () => {
       request_items: "status,updated_at",
       requests: "closed_at,description,due_date,priority,published_at,status,tax_year,title,updated_at",
       rule_settings: "enabled,params",
-      tenants: "ai_extraction_enabled,external_llm_enabled",
+      tenants: "ai_extraction_enabled,external_llm_enabled,llm_daily_call_limit",
       users: "department_id,entity_id,is_active,name,role,title",
     });
   });
