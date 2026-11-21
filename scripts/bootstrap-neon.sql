@@ -1,0 +1,20 @@
+-- One-time bootstrap for a hosted Postgres (Neon). Run ONCE as the project's owner role, connected to the database you will use.
+-- Passwords are inputs, never defaults:
+--   psql "$NEON_ADMIN_URL" -v ON_ERROR_STOP=1 -v owner_pw="$OWNER_PW" -v app_pw="$APP_PW" -v worker_pw="$WORKER_PW" -f scripts/bootstrap-neon.sql
+-- Same four roles and privileges as scripts/bootstrap-db.sql (see the comments there), without the dev passwords and without creating databases.
+SELECT format('CREATE ROLE taxops_owner LOGIN PASSWORD %L NOSUPERUSER NOBYPASSRLS', :'owner_pw')
+  WHERE NOT EXISTS (SELECT FROM pg_roles WHERE rolname = 'taxops_owner') \gexec
+SELECT format('CREATE ROLE taxops_app LOGIN PASSWORD %L NOSUPERUSER NOBYPASSRLS NOCREATEDB NOCREATEROLE', :'app_pw')
+  WHERE NOT EXISTS (SELECT FROM pg_roles WHERE rolname = 'taxops_app') \gexec
+SELECT format('CREATE ROLE taxops_worker LOGIN PASSWORD %L NOSUPERUSER NOBYPASSRLS NOCREATEDB NOCREATEROLE', :'worker_pw')
+  WHERE NOT EXISTS (SELECT FROM pg_roles WHERE rolname = 'taxops_worker') \gexec
+SELECT 'CREATE ROLE taxops_ops NOLOGIN NOSUPERUSER BYPASSRLS'
+  WHERE NOT EXISTS (SELECT FROM pg_roles WHERE rolname = 'taxops_ops') \gexec
+
+GRANT taxops_ops TO taxops_owner;
+-- Allow this session to hand ownership to taxops_owner (needed on managed Postgres where the project owner is not a true superuser).
+SELECT format('GRANT taxops_owner TO %I', current_user) WHERE NOT pg_has_role(current_user, 'taxops_owner', 'MEMBER') \gexec
+SELECT format('ALTER DATABASE %I OWNER TO taxops_owner', current_database()) \gexec
+ALTER SCHEMA public OWNER TO taxops_owner;
+REVOKE ALL ON SCHEMA public FROM PUBLIC;
+GRANT USAGE ON SCHEMA public TO taxops_app, taxops_worker, taxops_ops;

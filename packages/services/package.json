@@ -11,6 +11,7 @@
     "typecheck": "tsc -p .",
     "test": "vitest run",
     "tenant-flags": "tsx src/cli/tenant-flags.ts",
+    "tenant-create": "tsx src/cli/create-tenant.ts",
     "notify-sweep": "tsx src/cli/sweep.ts"
   },
   "dependencies": {
