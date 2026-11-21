@@ -152,7 +152,7 @@ export function NewRequestForm({ year, departments, entities, people, requestId,
               {Object.entries(picked).map(([key, p]) => (
                 <li key={key}>
                   <button type="button" onClick={() => setPicked((x) => { const n = { ...x }; delete n[key]; return n; })}
-                    className="inline-flex items-center gap-1.5 rounded-md bg-accentsoft px-2 py-1 text-[12px] font-medium text-accent" aria-label={`Remove ${p.label}`}>
+                    className="inline-flex items-center gap-1.5 rounded-md bg-accentsoft px-2 py-1 text-[12px] font-medium text-[var(--accent-strong)]" aria-label={`Remove ${p.label}`}>
                     {p.label} <X size={12} aria-hidden />
                   </button>
                 </li>

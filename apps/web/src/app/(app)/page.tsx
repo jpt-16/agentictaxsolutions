@@ -59,7 +59,7 @@ export default async function DashboardPage() {
         <Kpi label="Items approved" value={`${d.kpis.completionPct}%`} hint="Across active requests" icon={CheckCircle2} />
       </div>
 
-      <div className="mt-5 grid gap-5 lg:grid-cols-[minmax(0,1fr)_360px]">
+      <div className="mt-5 grid gap-5 min-[1480px]:grid-cols-[minmax(0,1fr)_360px]">
         <div className="space-y-5">
           <Card>
             <CardHeader title="Upcoming deadlines" subtitle="Soonest first, including overdue work"

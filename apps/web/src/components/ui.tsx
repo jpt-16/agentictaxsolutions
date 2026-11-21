@@ -115,7 +115,7 @@ export function Avatar({ name, size = 28 }: { name: string; size?: number }) {
   const initials = name.split(/\s+/).filter(Boolean).slice(0, 2).map((p) => p[0]!.toUpperCase()).join("");
   return (
     <span aria-hidden className="inline-flex flex-none items-center justify-center rounded-full font-semibold"
-      style={{ width: size, height: size, fontSize: size * 0.4, background: "var(--accent-soft)", color: "var(--accent)" }}>
+      style={{ width: size, height: size, fontSize: size * 0.4, background: "var(--accent-soft)", color: "var(--accent-strong)" }}>
       {initials}
     </span>
   );
@@ -145,5 +145,5 @@ export function SeverityBadge({ severity }: { severity: "info" | "warning" | "er
 /** Comment text with @mentions emphasised. Purely visual: React escapes everything, nothing is parsed as HTML. */
 export function MentionText({ text }: { text: string }) {
   const parts = text.split(/(@[\p{Lu}][\p{L}'’-]*(?: [\p{Lu}][\p{L}'’-]*)?)/u);
-  return <>{parts.map((p, i) => (i % 2 === 1 ? <span key={i} className="rounded px-0.5 font-medium" style={{ background: "var(--accent-soft)", color: "var(--accent)" }}>{p}</span> : p))}</>;
+  return <>{parts.map((p, i) => (i % 2 === 1 ? <span key={i} className="rounded px-0.5 font-medium" style={{ background: "var(--accent-soft)", color: "var(--accent-strong)" }}>{p}</span> : p))}</>;
 }

@@ -32,7 +32,7 @@ export default async function LoginPage({ searchParams }: { searchParams: Promis
   const users = enabled ? await listDevLoginUsers(db, process.env.DEV_TENANT_SLUG ?? "northwind") : [];
 
   return (
-    <main id="main" className="mx-auto flex min-h-screen max-w-3xl flex-col justify-center px-5 py-12">
+    <main id="main" className="login-wash relative isolate mx-auto flex min-h-screen max-w-3xl flex-col justify-center px-5 py-12">
       <div className="mb-8 flex items-center gap-3">
         <LogoMark size={44} />
         <div>

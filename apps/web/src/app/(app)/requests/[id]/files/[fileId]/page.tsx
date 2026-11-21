@@ -54,7 +54,7 @@ export default async function FilePreviewPage({ params, searchParams }: {
           <nav aria-label="Sheets" className="flex flex-wrap gap-1 border-b border-line px-3 py-2">
             {p.sheets.map((s) => (
               <Link key={s.name} href={`/requests/${id}/files/${fileId}?sheet=${encodeURIComponent(s.name)}`} aria-current={s.name === p.active ? "page" : undefined}
-                className={cn("rounded-md px-2.5 py-1 text-[13px] font-medium", s.name === p.active ? "bg-accentsoft text-accent" : "text-muted hover:bg-surface2 hover:text-ink")}>
+                className={cn("rounded-md px-2.5 py-1 text-[13px] font-medium", s.name === p.active ? "bg-accentsoft text-[var(--accent-strong)]" : "text-muted hover:bg-surface2 hover:text-ink")}>
                 {s.name} <span className="tnum text-[11px] opacity-70">{s.rows}×{s.cols}</span>
               </Link>
             ))}
