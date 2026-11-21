@@ -76,6 +76,11 @@ class ValidationAgent(Agent[ProposalAccepted, AgentResult]):
     input_model = ProposalAccepted
     output_model = AgentResult
 
+    @classmethod
+    def accepts(cls, payload: ProposalAccepted) -> bool:  # type: ignore[override]
+        """Rules exist for trial balances only; an accepted document is for the reconciliation agent."""
+        return payload.schema_ == "trial_balance"
+
     def run(self, ctx: RunContext, payload: ProposalAccepted) -> AgentResult:
         t0 = time.monotonic()
         elapsed = lambda: int((time.monotonic() - t0) * 1000)

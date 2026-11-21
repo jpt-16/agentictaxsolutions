@@ -52,7 +52,7 @@ def build_proposal(grid: Grid, m: Mapping, v: Verification, budget: int, index: 
         return None
     conf = confidence(m, v)
     notes = [*m.notes, *(notes or []), *ex.notes]
-    hints = metadata_hints(grid, m.header_row)
+    hints = metadata_hints(grid, m.header_row, window=6 if label else None, entity=label)
     n_issue_rows = ex.stats["rows_with_issues"]
     warn = conf < 0.8 or n_issue_rows > 0 or ex.stats.get("totals_mismatch") or grid.truncated
     if grid.truncated:

@@ -55,7 +55,7 @@ export default async function ReviewQueuePage({ searchParams }: { searchParams: 
                       <p className="mt-0.5 truncate text-[12px] text-muted">{r.detail}</p>
                     </td>
                     <td className="min-w-[13rem] max-w-[260px]"><Link href={`/requests/${r.requestId}`} className="text-body hover:text-accent">{r.requestTitle}</Link><p className="tnum text-[12px] text-muted">{r.requestRef} · {r.itemTitle}</p></td>
-                    <td className="whitespace-nowrap text-body">{r.fileName}</td>
+                    <td className="whitespace-nowrap text-body">{r.fileName}{kind !== "finding" && <div className="text-[12px] text-muted">{r.currency ?? "Currency not found"}</div>}</td>
                     <td className="tnum text-body">{kind === "finding" ? r.ruleId : r.rowCount}</td>
                     <td className="whitespace-nowrap"><div className="flex items-center gap-1.5">{kind === "finding" ? <SeverityBadge severity={r.severity} /> : <><ConfidencePill value={r.confidence} />{r.severity === "warning" && <Badge tone="amber">Check</Badge>}</>}</div></td>
                     <td className="whitespace-nowrap text-muted">{formatDateTime((status === "pending" ? r.createdAt : r.decidedAt ?? r.createdAt) as Date)}</td>

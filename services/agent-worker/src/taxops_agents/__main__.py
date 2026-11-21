@@ -9,6 +9,7 @@ import threading
 
 from .agents.documents import DocumentAgent
 from .agents.extraction import ExtractionAgent, RemapAgent
+from .agents.reconciliation import ReconciliationAgent
 from .agents.validation import ValidationAgent
 from .llm import build_gateway
 from .logging_setup import configure_logging
@@ -35,6 +36,7 @@ registry.register(ExtractionAgent)
 registry.register(RemapAgent)
 registry.register(DocumentAgent)
 registry.register(ValidationAgent)
+registry.register(ReconciliationAgent)
 
 
 def main() -> None:

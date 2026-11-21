@@ -43,7 +43,7 @@ def test_title_rows_blank_lines_and_total_rows_are_handled():
     assert p.payload["header_row"] == 4
     assert p.payload["stats"]["row_count"] == 6
     assert p.payload["stats"]["reported_total_debit"] == "2200" and "totals_mismatch" not in p.payload["stats"]
-    assert p.payload["metadata"] == {"entity_hint": "NWG – EUR", "currency": "EUR", "period": "31 Dec 2025"}
+    assert p.payload["metadata"] == {"entity_hint": "NWG – EUR", "currency": "EUR", "currency_source": "sheet title", "period": "31 Dec 2025"}
     assert [r.source_row for r in res.rows][:2] == [5, 6]  # lineage points at real sheet rows
 
 

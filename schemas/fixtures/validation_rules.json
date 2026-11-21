@@ -89,5 +89,35 @@
     "params": {
       "min_amount": "0"
     }
+  },
+  {
+    "id": "rc_amount_unmatched",
+    "name": "Confirmed amount agrees with the books",
+    "description": "A balance confirmation states an amount that no account in the request's accepted trial balances carries (within a tolerance).",
+    "severity": "warning",
+    "params": {
+      "tolerance": "0"
+    }
+  },
+  {
+    "id": "rc_direction",
+    "name": "Direction of a confirmed balance",
+    "description": "The confirmation and the matching account both describe the amount as a payable (or both as a receivable). The two parties to a balance should record opposite sides.",
+    "severity": "warning",
+    "params": {}
+  },
+  {
+    "id": "rc_currency",
+    "name": "Currencies are comparable",
+    "description": "The confirmation and a trial balance are in different currencies, so their amounts were not compared.",
+    "severity": "info",
+    "params": {}
+  },
+  {
+    "id": "rc_agreement",
+    "name": "Agreements are recorded",
+    "description": "Records when a confirmation agrees with an account, so a reviewer can see what was checked and not only what failed.",
+    "severity": "info",
+    "params": {}
   }
 ]

@@ -108,3 +108,24 @@ def test_every_messy_sample_file_is_extracted_exactly():
         best = max(range(len(res.proposals)), key=lambda i: sum(1 for r in res.rows if r.proposal_index == i and want.get(r.values["account_code"]) == Decimal(r.values["debit"]) - Decimal(r.values["credit"])))
         got = {r.values["account_code"]: Decimal(r.values["debit"]) - Decimal(r.values["credit"]) for r in res.rows if r.proposal_index == best}
         assert got == want, name
+
+
+def test_currency_is_found_from_titles_headers_and_symbols_and_never_guessed_from_a_bare_dollar_sign():
+    def meta(rows):
+        return run(rows).proposals[0].payload["metadata"]
+    hdr = ["Account", "Description", "Debit", "Credit"]
+    assert meta([["Northwind – TB", "", "Moneda: MXN"], hdr, ["1000", "Caja", 1, 0], ["2000", "Prov", 0, 1]])["currency"] == "MXN"
+    m = meta([["Acct", "Account Description", "Dr (SGD)", "Cr (SGD)"], ["1000", "Cash", 1, 0], ["2000", "Pay", 0, 1]])
+    assert m["currency"] == "SGD" and m["currency_source"] == "column header"
+    m = meta([hdr, ["1000", "Cash", "R$ 1,00", ""], ["2000", "Pay", "", "R$ 1,00"]])
+    assert m["currency"] == "BRL" and m["currency_source"] == "amount symbols"
+    assert "currency" not in meta([hdr, ["1000", "Cash", "$1.00", ""], ["2000", "Pay", "", "$1.00"]])      # "$" could be many currencies
+    m = meta([["Group reporting in EUR, local in USD"], hdr, ["1000", "Cash", 1, 0], ["2000", "Pay", 0, 1]])
+    assert "currency" not in m and "EUR, USD" in m["currency_note"]                                        # conflicting: not guessed
+
+
+def test_a_stacked_second_table_gets_its_own_currency():
+    rows = [["Entity A: Brasil – BRL"], ["Conta", "Descrição", "Débito", "Crédito"], ["1000", "Caixa", 100, 0], ["2000", "Forn", 0, 100], ["", "Total", 100, 100], [],
+            ["Entity B: Chile – CLP"], ["Cuenta", "Descripción", "Debe", "Haber"], ["1000", "Caja", 50, 0], ["2000", "Prov", 0, 50]]
+    res = run(rows, sheet="Group")
+    assert [p.payload["metadata"].get("currency") for p in res.proposals] == ["BRL", "CLP"]

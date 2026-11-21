@@ -31,7 +31,7 @@ export async function listProposals(ctx: ServiceContext, f: ProposalFilters = {}
         id: proposals.id, kind: proposals.kind, ruleId: proposals.ruleId, title: proposals.title, detail: proposals.detail, confidence: proposals.confidence, severity: proposals.severity,
         status: proposals.status, createdAt: proposals.createdAt, decidedAt: proposals.decidedAt,
         requestId: requests.id, requestRef: requests.reference, requestTitle: requests.title, itemTitle: requestItems.title,
-        fileName: files.originalName, rowCount: sql<number>`(select count(*)::int from extracted_rows er where er.proposal_id = ${proposals.id})`,
+        fileName: files.originalName, currency: sql<string | null>`${proposals.payload} -> 'metadata' ->> 'currency'`, rowCount: sql<number>`(select count(*)::int from extracted_rows er where er.proposal_id = ${proposals.id})`,
       })
       .from(proposals)
       .innerJoin(requests, and(eq(requests.tenantId, proposals.tenantId), eq(requests.id, proposals.requestId)))
@@ -146,8 +146,9 @@ export async function decideProposal(ctx: ServiceContext, proposalId: string, ra
     }).where(and(eq(proposals.id, proposalId), eq(proposals.status, "pending"))).returning({ id: proposals.id });
     if (updated.length === 0) throw new InvalidTransitionError(`This result was already ${p.status}.`);
     const [req] = await tx.select({ reference: requests.reference }).from(requests).where(eq(requests.id, p.requestId));
-    // Validation rules exist only for trial balances; an accepted supporting document has nothing further to run.
-    if (p.kind === "extraction" && input.decision === "accepted" && (p.schemaKey ?? "trial_balance") === "trial_balance") {
+    // Accepted work is announced to the agents that build on it: validation (trial balances) and reconciliation (trial balances and
+    // documents, compared within the request). Each agent decides for itself whether the event concerns it.
+    if (p.kind === "extraction" && input.decision === "accepted" && ["trial_balance", "supporting_document"].includes(p.schemaKey ?? "trial_balance")) {
       // Same transaction as the decision: validation runs only against data a person has accepted, and never gets lost.
       await tx.insert(jobs).values({
         tenantId: ctx.session.tenantId, type: "proposal.accepted",

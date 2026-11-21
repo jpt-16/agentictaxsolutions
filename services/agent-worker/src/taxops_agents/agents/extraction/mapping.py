@@ -347,13 +347,43 @@ def extract_rows(grid: Grid, m: Mapping, max_rows: int) -> Extracted:
 
 
 # ------------------------------------------------------------------------------------------- metadata hints
-def metadata_hints(grid: Grid, header_row: int) -> dict[str, str]:
-    """Best-effort, clearly labelled as inferred: currency and period from the sheet name or the rows above the header."""
-    hints: dict[str, str] = {"entity_hint": grid.name[:80]}
-    text = " ".join([grid.name] + [str(c) for r in grid.rows[: max(header_row - 1, 0)] for c in r if c not in (None, "")])
-    ccy = next((c for c in _CCY if re.search(rf"\b{c}\b", text)), None)
-    if ccy:
-        hints["currency"] = ccy
+_SYMBOL_CCY = (("US$", "USD"), ("MX$", "MXN"), ("CA$", "CAD"), ("C$", "CAD"), ("AU$", "AUD"), ("A$", "AUD"), ("S$", "SGD"), ("R$", "BRL"), ("€", "EUR"), ("£", "GBP"))
+
+
+def _codes_in(text: str) -> list[str]:
+    found: list[str] = []
+    for m in re.finditer(r"\b(" + "|".join(_CCY) + r")\b", text):
+        if m.group(1) not in found:
+            found.append(m.group(1))
+    return found
+
+
+def metadata_hints(grid: Grid, header_row: int, window: int | None = None, entity: str | None = None) -> dict[str, str]:
+    """Best-effort, clearly labelled as inferred: currency and period. Currency comes from (in order) the title rows above the header,
+    the column headers (e.g. "Debit (EUR)"), the sheet name, then unambiguous symbols in the amounts (S$, R$, €, £). If several
+    different currencies are mentioned at one level, none is guessed and a note says so. `window` limits the title rows to the few
+    just above this header, so a table stacked below another does not inherit the first table's currency."""
+    hints: dict[str, str] = {"entity_hint": (entity or grid.name)[:80]}
+    lo = max(header_row - 1 - window, 0) if window else 0
+    above = " ".join(str(c) for r in grid.rows[lo : max(header_row - 1, 0)] for c in r if c not in (None, ""))
+    header = " ".join(str(c) for c in (grid.rows[header_row - 1] if 1 <= header_row <= len(grid.rows) else []) if c not in (None, ""))
+    levels = [("sheet title", above), ("column header", header)]
+    if not window:
+        levels.append(("sheet name", grid.name))
+    for source, text in levels:
+        codes = _codes_in(text)
+        if len(codes) == 1:
+            hints["currency"], hints["currency_source"] = codes[0], source
+            break
+        if len(codes) > 1:
+            hints["currency_note"] = f"Several currencies are mentioned ({', '.join(codes)}), so none was assumed."
+            break
+    else:
+        cells = [str(c) for r in grid.rows[header_row : header_row + 30] for c in r if isinstance(c, str)]
+        syms = {code for sym, code in _SYMBOL_CCY if any(sym in c for c in cells)}
+        if len(syms) == 1:
+            hints["currency"], hints["currency_source"] = next(iter(syms)), "amount symbols"
+    text = " ".join([above, grid.name if not window else ""])
     m = re.search(r"\b(\d{4}-\d{2}-\d{2}|\d{1,2} [A-Za-z]{3,9} \d{4}|FY ?\d{4})\b", text)
     if m:
         hints["period"] = m.group(1)

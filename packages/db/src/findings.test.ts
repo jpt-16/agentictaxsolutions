@@ -3,7 +3,7 @@ import { randomUUID } from "node:crypto";
 import { sql } from "drizzle-orm";
 import { connect, withTenant, type Connection } from "./client";
 import * as s from "./schema";
-import { createFileFixture, createTestTenant, TEST_APP_URL, TEST_OWNER_URL, TEST_WORKER_URL, type FileFixture, type TestTenant } from "./testing";
+import { createFileFixture, createFileInRequest, createTestTenant, TEST_APP_URL, TEST_OWNER_URL, TEST_WORKER_URL, type FileFixture, type TestTenant } from "./testing";
 
 let owner: Connection, app: Connection, worker: Connection;
 let A: TestTenant, B: TestTenant;
@@ -25,6 +25,18 @@ async function acceptedExtraction(t: TestTenant, f: FileFixture, status: "accept
     await tx.insert(s.proposals).values({ id, tenantId: t.tenantId, runId, fileId: f.fileId, requestId: f.requestId, itemId: f.itemId, kind: "extraction", schemaKey: "trial_balance", title: "TB", payload: { sheet: "S", schema: "trial_balance" }, confidence: "0.9",
       ...(status === "accepted" ? { status: "accepted" as const, decidedBy: t.users.reviewer, decidedAt: new Date() } : {}) });
     await tx.insert(s.extractedRows).values([1, 2].map((n) => ({ tenantId: t.tenantId, proposalId: id, position: n, sheet: "S", sourceRow: n + 1, values: { debit: "10" }, cells: {} })));
+  });
+  return id;
+}
+/** Any accepted/pending extraction of the given schema, optionally with a payload. */
+async function extractionOf(t: TestTenant, f: FileFixture, schemaKey: string, status: "accepted" | "pending" = "accepted", payload: object = { sheet: "S" }) {
+  const runId = randomUUID(), jobId = randomUUID(), id = randomUUID();
+  await withTenant(owner.db, { tenantId: t.tenantId }, async (tx) => {
+    await tx.execute(sql`insert into jobs (id, tenant_id, type, payload, status) values (${jobId}, ${t.tenantId}, 'file.uploaded', '{}', 'succeeded')`);
+    await tx.insert(s.agentRuns).values({ id: runId, tenantId: t.tenantId, jobId, agentName: "x", agentVersion: "1", event: "file.uploaded", fileId: f.fileId, status: "succeeded" });
+    await tx.insert(s.proposals).values({ id, tenantId: t.tenantId, runId, fileId: f.fileId, requestId: f.requestId, itemId: f.itemId, kind: "extraction", schemaKey, title: schemaKey, payload: { schema: schemaKey, ...payload }, confidence: "0.9",
+      ...(status === "accepted" ? { status: "accepted" as const, decidedBy: t.users.reviewer, decidedAt: new Date() } : {}) });
+    if (schemaKey === "trial_balance") await tx.insert(s.extractedRows).values([1, 2, 3].map((n) => ({ tenantId: t.tenantId, proposalId: id, position: n, sheet: "S", sourceRow: n + 1, values: { account_code: `${n}000`, debit: "10", credit: "0" }, cells: {} })));
   });
   return id;
 }
@@ -136,5 +148,68 @@ describe("rule settings are guarded by role in the database", () => {
 
   it("the worker role cannot read or write settings directly", async () => {
     await expectDbError(worker.db.execute(sql`select * from rule_settings`), /permission denied/i);
+  });
+});
+
+describe("agent_get_related (cross-file read for reconciliation)", () => {
+  const related = async (job: string, who = "w1") => ((await worker.db.execute(sql`select agent_get_related(${job}::uuid, ${who}) as d`)).rows[0] as any).d;
+
+  it("returns the ACCEPTED trial balances and documents of the SAME request, with rows only for trial balances", async () => {
+    const f = await createFileFixture(owner, A);
+    const g = await createFileInRequest(owner, A, f);
+    const tb = await extractionOf(A, f, "trial_balance");
+    const doc = await extractionOf(A, g, "supporting_document", "accepted", { document_type: "Balance confirmation" });
+    await extractionOf(A, g, "supporting_document", "pending");                 // pending: not shared
+    const job = await validationJob(A, f, tb);
+    const r = await related(job);
+    expect(r.self).toBe(tb);
+    expect(r.request.id).toBe(f.requestId);
+    const byId = Object.fromEntries(r.proposals.map((p: any) => [p.id, p]));
+    expect(Object.keys(byId).sort()).toEqual([tb, doc].sort());
+    expect(byId[tb].rows).toHaveLength(3); expect(byId[doc].rows).toEqual([]);
+    expect(byId[doc]).toMatchObject({ file_name: "confirmation.docx", item_title: "Supporting document", payload: { document_type: "Balance confirmation" } });
+    expect(r.tenant).toEqual({ external_llm_enabled: false });
+  });
+
+  it("never reaches another request, another tenant, or a job the worker does not hold", async () => {
+    const f = await createFileFixture(owner, A);
+    const other = await createFileFixture(owner, A);                               // a different request in the same tenant
+    const tb = await extractionOf(A, f, "trial_balance");
+    const otherTb = await extractionOf(A, other, "trial_balance");
+    const fb = await createFileFixture(owner, B);
+    const theirs = await extractionOf(B, fb, "trial_balance");
+    const r = await related(await validationJob(A, f, tb));
+    expect(r.proposals.map((p: any) => p.id)).toEqual([tb]);
+    expect(r.proposals.map((p: any) => p.id)).not.toContain(otherTb);
+    // a job in tenant A that names tenant B's proposal gets nothing
+    expect(await related(await validationJob(A, f, theirs))).toBeNull();
+    // a job whose own proposal is not accepted gets nothing
+    const pending = await extractionOf(A, f, "trial_balance", "pending");
+    expect(await related(await validationJob(A, f, pending))).toBeNull();
+    const held = await validationJob(A, f, tb);
+    await expectDbError(worker.db.execute(sql`select agent_get_related(${held}::uuid, 'intruder')`), /not held by this worker/);
+  });
+
+  it("is executable by the worker role only", async () => {
+    const f = await createFileFixture(owner, A);
+    const job = await validationJob(A, f, await extractionOf(A, f, "trial_balance"));
+    await expectDbError(app.db.execute(sql`select agent_get_related(${job}::uuid, 'w1')`), /permission denied/i);
+  });
+});
+
+describe("agent_save_results retirement is scoped to the saving agent", () => {
+  it("a second agent's run does not retire the first agent's open findings on the same source", async () => {
+    const f = await createFileFixture(owner, A);
+    const pid = await extractionOf(A, f, "trial_balance");
+    const saveAs = (job: string, agent: string, proposals: object[]) =>
+      worker.db.execute(sql`select agent_save_results(${job}::uuid, 'w1', ${agent}, '1.0.0', '{"status":"succeeded","detail":"ok"}'::jsonb, ${JSON.stringify(proposals)}::jsonb, '[]'::jsonb) as ids`);
+    const status = async (id: string) => (await withTenant(app.db, { tenantId: A.tenantId }, (tx) => tx.select().from(s.proposals).where(sql`${s.proposals.id} = ${id}`)))[0]!.status;
+    const [v] = ids(await saveAs(await validationJob(A, f, pid), "validation", [finding(pid)]));
+    const [r] = ids(await saveAs(await validationJob(A, f, pid), "reconciliation", [finding(pid, { rule_id: "rc_amount_unmatched", payload: { rule_id: "rc_amount_unmatched", dedupe: "d", summary: "x" } })]));
+    expect(await status(v!)).toBe("pending");                                       // not retired by the other agent
+    expect(await status(r!)).toBe("pending");
+    ids(await saveAs(await validationJob(A, f, pid), "reconciliation", []));        // reconciliation re-runs and raises nothing
+    expect(await status(r!)).toBe("superseded");                                    // its own is retired
+    expect(await status(v!)).toBe("pending");                                       // the validation finding survives
   });
 });

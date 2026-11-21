@@ -115,7 +115,7 @@ class Worker:
         allow = bool(meta and meta.external_llm_enabled) or bool(proposals and proposals.external_allowed())
         gated = files is not None or proposals is not None
         llm = self.gateway if allow or not gated else NullGateway("This tenant has not allowed external LLM processing.")
-        ctx = RunContext(tenant_id=job.tenant_id, run_id=uuid4(), triggered_by_event=job.type, llm=llm, files=files, proposals=proposals,
+        ctx = RunContext(tenant_id=job.tenant_id, run_id=uuid4(), triggered_by_event=job.type, llm=llm, files=files, proposals=proposals, related=proposals,
                          allow_external_llm=allow or not gated)
         output = agent_cls().run(ctx, payload)
         if isinstance(output, AgentResult) and files is not None:

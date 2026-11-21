@@ -384,7 +384,7 @@ const BASE = process.env.BASE_URL ?? "http://localhost:3000";
   const pack = await post("/api/reports/data", { requestId: mainId });
   assert.equal(pack.status(), 200);
   const packText = await pack.text();
-  assert.match(packText.split("\r\n")[0], /^request,item,file,sheet,source_row,account_code/);
+  assert.match(packText.split("\r\n")[0], /^request,item,file,sheet,currency,source_row,account_code/);
   assert.match(packText, /,1000,Cash,/); // the accepted trial balance, line by line
   assert.equal((await page.context().request.post(`${BASE}/api/reports/status`, { form: {} })).status(), 403); // no Origin header: refused
   step("reports page, status CSV and approved-data pack work; cross-origin export is refused");
@@ -400,6 +400,62 @@ const BASE = process.env.BASE_URL ?? "http://localhost:3000";
   step("a copied session cookie stops working after sign-out (server-side revocation)");
   await login("Sam Whitfield");
   assert.equal((await page.goto(`${BASE}/reports`)).status(), 404); // contributors have no reports
+  await logout();
+
+  // ===== Reconciliation: a signed confirmation letter checked against the trial balance in the same request =====
+  await login("Marcus Hale");
+  await page.goto(`${BASE}/requests/new`);
+  await page.fill("#title", "E2E reconciliation – Germany and France");
+  await page.fill("#due", "2027-03-15");
+  await page.fill('[aria-label="Item 1 title"]', "Trial balance, Germany");
+  await page.click('button:has-text("Add item")');
+  await page.fill('[aria-label="Item 2 title"]', "France confirmation letter");
+  await page.click('label:has-text("Accounting – Americas") input');
+  await page.click('button:has-text("Publish request")');
+  await page.waitForURL(/\/requests\/[0-9a-f-]{36}/);
+  const recUrl = page.url();
+  await logout();
+  await login("Sam Whitfield");
+  await page.goto(recUrl);
+  const TBITEM = "Trial balance, Germany", LETTERITEM = "France confirmation letter";
+  await item(TBITEM).locator("textarea").fill("German trial balance attached.");
+  await item(TBITEM).locator('input[type="file"]').setInputFiles({ name: "germany-tb.xlsx", mimeType: XLSX_MIME, buffer: fs.readFileSync(path.join(SAMPLES, "messy-trial-balance-germany.xlsx")) });
+  await btn(TBITEM, "Submit").click();
+  await item(TBITEM).getByText("germany-tb.xlsx").waitFor();
+  await item(LETTERITEM).locator("textarea").fill("Signed confirmation letter attached.");
+  await item(LETTERITEM).locator('input[type="file"]').setInputFiles({ name: "france-confirmation.docx", mimeType: DOCX_MIME, buffer: fs.readFileSync(path.join(SAMPLES, "balance-confirmation.docx")) });
+  await btn(LETTERITEM, "Submit").click();
+  await item(LETTERITEM).getByText("france-confirmation.docx").waitFor();
+  await logout();
+
+  execSync(WORKER, { cwd: path.join(__dirname, "../services/agent-worker"), stdio: "pipe", env: process.env });
+  await login("Naomi Clarke");
+  const acceptResult = async (file) => {
+    await page.goto(`${BASE}/review`);
+    await page.locator("tr", { hasText: file }).getByRole("link").first().click();
+    await page.getByRole("button", { name: "Accept as correctly read" }).click();
+    await page.getByText("Accepted", { exact: true }).first().waitFor();
+  };
+  await page.goto(`${BASE}/review`);
+  await page.locator("tr", { hasText: "germany-tb.xlsx" }).getByRole("link").first().click();
+  await page.waitForSelector("text=Column mapping");
+  assert.match(await page.locator("body").innerText(), /EUR · from sheet title/); // every result states its currency and where that came from
+  await page.getByRole("button", { name: "Accept as correctly read" }).click();
+  await page.getByText("Accepted", { exact: true }).first().waitFor();
+  execSync(WORKER, { cwd: path.join(__dirname, "../services/agent-worker"), stdio: "pipe", env: process.env }); // validation runs; reconciliation has no letter yet
+  await acceptResult("france-confirmation.docx");
+  execSync(WORKER, { cwd: path.join(__dirname, "../services/agent-worker"), stdio: "pipe", env: process.env }); // reconciliation compares the letter with the books
+  await page.goto(`${BASE}/review?kind=finding`);
+  const direction = page.locator("tr", { hasText: "is a payable on both sides" });
+  await direction.waitFor();
+  await page.locator("tr", { hasText: "germany-tb.xlsx" }).filter({ hasText: "Debits and credits differ" }).waitFor(); // the Checker's finding was not retired by the second agent
+  await direction.getByRole("link").first().click();
+  await page.waitForSelector("text=Suggested next step");
+  const f = await page.locator("body").innerText();
+  assert.match(f, /EUR 340,000\.00/);
+  assert.match(f, /Northwind France SAS/);
+  assert.match(f, /cannot tell which entity a trial balance belongs to/); // it states what it does not know
+  step("a letter and a trial balance in one request were reconciled by a second agent; the first agent's finding survived; currency is shown");
   await logout();
 
   // Administration: AI governance switches and people management (tenant admin only)

@@ -98,6 +98,35 @@ class ProposalAccess(Protocol):
     def open(self, proposal_id: UUID) -> SourceProposal | None: ...
 
 
+class RelatedProposal(BaseModel):
+    """One ACCEPTED extraction in the same request as the job's own proposal (rows only for trial balances)."""
+
+    model_config = ConfigDict(frozen=True)
+    id: UUID
+    schema_key: str | None
+    payload: dict[str, Any]
+    file_name: str
+    item_title: str
+    rows: list[dict[str, Any]] = Field(default_factory=list)
+
+
+class RelatedSet(BaseModel):
+    model_config = ConfigDict(frozen=True)
+    self_id: UUID
+    request_reference: str
+    tax_year: int
+    rule_settings: dict[str, dict[str, Any]]
+    external_llm_enabled: bool
+    proposals: list[RelatedProposal]
+
+
+@runtime_checkable
+class RelatedAccess(Protocol):
+    """Read access to the accepted work in the SAME request as the held job's proposal. Nothing wider."""
+
+    def related(self, proposal_id: UUID) -> RelatedSet | None: ...
+
+
 class RunContext(BaseModel):
     """Everything an agent may know about the run. Always tenant-scoped."""
 
@@ -108,6 +137,7 @@ class RunContext(BaseModel):
     llm: LLMGateway
     files: FileAccess | None = None
     proposals: ProposalAccess | None = None
+    related: RelatedAccess | None = None
     # False when the tenant has not allowed content to be sent to an external model provider.
     allow_external_llm: bool = False
 

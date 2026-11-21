@@ -70,3 +70,14 @@ export async function createFileFixture(owner: Connection, t: TestTenant, name =
   });
   return { requestId, itemId, submissionId, fileId, storageKey };
 }
+
+/** A second item, submission and file inside the SAME request as `base` (e.g. a supporting document beside a trial balance). */
+export async function createFileInRequest(owner: Connection, t: TestTenant, base: FileFixture, name = "confirmation.docx"): Promise<FileFixture> {
+  const itemId = randomUUID(), submissionId = randomUUID(), fileId = randomUUID();
+  await withTenant(owner.db, { tenantId: t.tenantId }, async (tx) => {
+    await tx.insert(s.requestItems).values({ id: itemId, tenantId: t.tenantId, requestId: base.requestId, position: 2, title: "Supporting document", dataType: "other", status: "submitted" });
+    await tx.insert(s.submissions).values({ id: submissionId, tenantId: t.tenantId, itemId, version: 1, submittedBy: t.users.contributor, note: "fixture" });
+    await tx.insert(s.files).values({ id: fileId, tenantId: t.tenantId, submissionId, originalName: name, contentType: "application/octet-stream", sizeBytes: 100, sha256: "d".repeat(64), storageKey: `${t.tenantId}/${fileId}`, scanner: "test", scannedAt: new Date(), uploadedBy: t.users.contributor });
+  });
+  return { requestId: base.requestId, itemId, submissionId, fileId, storageKey: `${t.tenantId}/${fileId}` };
+}

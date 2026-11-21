@@ -66,7 +66,7 @@ export async function requestStatusReport(ctx: ServiceContext): Promise<StatusRe
 }
 
 export const STATUS_REPORT_COLUMNS = ["reference", "title", "tax_year", "status", "priority", "due_date", "days_left", "overdue", "items_total", "items_approved", "items_submitted", "published_at", "closed_at", "cycle_days"];
-export const DATA_PACK_COLUMNS = ["request", "item", "file", "sheet", "source_row", "account_code", "account_name", "debit", "credit", "source_cells", "accepted_by", "accepted_at"];
+export const DATA_PACK_COLUMNS = ["request", "item", "file", "sheet", "currency", "source_row", "account_code", "account_name", "debit", "credit", "source_cells", "accepted_by", "accepted_at"];
 
 /**
  * The data a person has ACCEPTED for one request, one line per account, with where each figure came from.
@@ -78,7 +78,7 @@ export async function approvedDataPack(ctx: ServiceContext, requestId: string): 
     const [req] = await tx.select({ id: requests.id, reference: requests.reference }).from(requests).where(eq(requests.id, requestId));
     if (!req) throw new NotFoundError("Request");
     const accepted = await tx.select({
-      id: proposals.id, itemId: proposals.itemId, fileId: proposals.fileId, decidedBy: proposals.decidedBy, decidedAt: proposals.decidedAt,
+      id: proposals.id, itemId: proposals.itemId, fileId: proposals.fileId, decidedBy: proposals.decidedBy, decidedAt: proposals.decidedAt, payload: proposals.payload,
     }).from(proposals).where(and(eq(proposals.requestId, req.id), eq(proposals.kind, "extraction"), eq(proposals.status, "accepted"), ne(proposals.schemaKey, "supporting_document")));
     const out: Record<string, unknown>[] = [];
     if (accepted.length) {
@@ -92,7 +92,7 @@ export async function approvedDataPack(ctx: ServiceContext, requestId: string): 
           const v = r.values as Record<string, string>;
           out.push({
             request: req.reference, item: itemRows.find((i) => i.id === a.itemId)?.title ?? "", file: fileRows.find((f) => f.id === a.fileId)?.name ?? "",
-            sheet: r.sheet, source_row: r.sourceRow, account_code: v.account_code ?? "", account_name: v.account_name ?? "", debit: v.debit ?? "", credit: v.credit ?? "",
+            sheet: r.sheet, currency: ((a.payload as { metadata?: Record<string, string> } | null)?.metadata?.currency) ?? "", source_row: r.sourceRow, account_code: v.account_code ?? "", account_name: v.account_name ?? "", debit: v.debit ?? "", credit: v.credit ?? "",
             source_cells: Object.values((r.cells ?? {}) as Record<string, string>).join(" "), accepted_by: userRows.find((u) => u.id === a.decidedBy)?.name ?? "",
             accepted_at: a.decidedAt ? a.decidedAt.toISOString() : "",
           });

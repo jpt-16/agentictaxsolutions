@@ -57,6 +57,9 @@ export default async function ProposalPage({ params, searchParams }: { params: P
           <span className="flex flex-wrap items-center gap-x-3 gap-y-1.5">
             <Badge tone={p.status === "accepted" ? "green" : p.status === "rejected" ? "red" : p.status === "pending" ? "violet" : "slate"} dot>{proposalStatusLabel(p.kind, p.status)}</Badge>
             {isFinding ? <SeverityBadge severity={p.severity} /> : <ConfidencePill value={p.confidence} />}
+            {pl && (pl.metadata.currency
+              ? <Badge tone="slate">{pl.metadata.currency}{pl.metadata.currency_source ? ` · from ${pl.metadata.currency_source}` : ""}</Badge>
+              : <Badge tone="amber">Currency not found</Badge>)}
             {pl && <Badge tone={pl.method === "llm" ? "indigo" : "slate"}>{pl.method === "llm" ? "AI-assisted mapping" : pl.method === "manual" ? "Reviewer-corrected mapping" : "Header match"}</Badge>}
             <span className="inline-flex items-center gap-1.5"><Bot size={14} aria-hidden /> {isFinding ? "Validation finding · confirm or dismiss" : "AI-generated · check against the source file"}</span>
           </span>

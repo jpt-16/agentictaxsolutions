@@ -21,14 +21,14 @@ class FileUploaded(BaseModel):
 
 
 class ProposalAccepted(BaseModel):
-    """Enqueued when a person accepts an extraction; triggers validation of the accepted data."""
+    """Enqueued when a person accepts an extraction; triggers validation (trial balances) and reconciliation (either kind)."""
 
     model_config = ConfigDict(extra="forbid")
     proposalId: UUID
     fileId: UUID
     requestId: UUID
     itemId: UUID
-    schema_: Literal["trial_balance"] = Field(alias="schema")
+    schema_: Literal["trial_balance", "supporting_document"] = Field(alias="schema")
 
 
 class ExtractionRemap(BaseModel):

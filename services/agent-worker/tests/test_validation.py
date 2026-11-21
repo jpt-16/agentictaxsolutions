@@ -8,6 +8,7 @@ from uuid import uuid4
 from taxops_agents.agents.validation import ValidationAgent, rule_catalog
 from taxops_agents.agents.validation.agent import Explanation, Explanations
 from taxops_agents.agents.validation.rules import Row, TBData, run_rules
+from taxops_agents.catalog import rule_catalog as full_catalog
 from taxops_agents.contract import RunContext, SourceProposal
 from taxops_agents.events import ProposalAccepted
 from taxops_agents.llm import FakeGateway, NullGateway
@@ -163,7 +164,7 @@ CATALOG = Path(__file__).resolve().parents[3] / "schemas" / "fixtures" / "valida
 
 
 def test_rule_catalog_matches_the_golden_file_the_ui_is_checked_against():
-    actual = rule_catalog()
+    actual = full_catalog()  # validation and reconciliation rules together: what Settings lists
     if os.environ.get("UPDATE_FIXTURES"):
         CATALOG.write_text(json.dumps(actual, indent=2) + "\n")
     assert actual == json.loads(CATALOG.read_text())

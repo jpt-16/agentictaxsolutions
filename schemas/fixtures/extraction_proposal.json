@@ -58,7 +58,8 @@
       },
       "metadata": {
         "entity_hint": "NWU – GBP",
-        "currency": "GBP"
+        "currency": "GBP",
+        "currency_source": "sheet title"
       },
       "notes": [],
       "parse_rate": 1.0,

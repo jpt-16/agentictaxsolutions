@@ -68,17 +68,26 @@ describe("reports and exports", () => {
 });
 
 describe("supporting documents", () => {
-  it("accepting one starts no validation, while accepting a trial balance does", async () => {
+  it("accepting a document or a trial balance announces it to the agents, each tagged with its own schema", async () => {
     const f = await createFileFixture(owner, A, "tb4.xlsx");
     const doc = await addProposal(f, "supporting_document", docGolden);
     const tb = await addProposal(f, "trial_balance", golden.proposal.payload, {}, [{ account_code: "1000", account_name: "Cash", debit: "1", credit: "0" }]);
-    const count = () => withTenant(owner.db, { tenantId: A.tenantId }, async (tx) => (await tx.select({ id: jobs.id }).from(jobs).where(eq(jobs.type, "proposal.accepted"))).length);
-    const before = await count();
+    const events = () => withTenant(owner.db, { tenantId: A.tenantId }, async (tx) => (await tx.select({ p: jobs.payload }).from(jobs).where(eq(jobs.type, "proposal.accepted"))).map((j) => j.p as { proposalId: string; schema: string }));
+    const before = (await events()).length;
     const ctx = await ctxFor(A, A.users.reviewer);
     await decideProposal(ctx, doc, { decision: "accepted" });
-    expect(await count()).toBe(before);
     await decideProposal(ctx, tb, { decision: "accepted" });
-    expect(await count()).toBe(before + 1);
+    const added = (await events()).slice(before);
+    expect(added.map((e) => [e.proposalId, e.schema]).sort()).toEqual([[doc, "supporting_document"], [tb, "trial_balance"]].sort());
+  });
+
+  it("a rejected result starts nothing", async () => {
+    const f = await createFileFixture(owner, A, "tb5.xlsx");
+    const doc = await addProposal(f, "supporting_document", docGolden);
+    const count = () => withTenant(owner.db, { tenantId: A.tenantId }, async (tx) => (await tx.select({ id: jobs.id }).from(jobs).where(eq(jobs.type, "proposal.accepted"))).length);
+    const before = await count();
+    await decideProposal(await ctxFor(A, A.users.reviewer), doc, { decision: "rejected", note: "wrong document" });
+    expect(await count()).toBe(before);
   });
 });
 

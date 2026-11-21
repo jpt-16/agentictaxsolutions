@@ -6,7 +6,7 @@ from uuid import UUID
 import psycopg
 from psycopg.types.json import Jsonb
 
-from .contract import AgentResult, AgentSpec, FileBlob, FileMeta, SourceProposal
+from .contract import AgentResult, AgentSpec, FileBlob, FileMeta, RelatedProposal, RelatedSet, SourceProposal
 from .storage import BlobStorage, verify_sha256
 
 
@@ -62,6 +62,20 @@ class JobProposals:
             id=proposal_id, schema_key=d["proposal"]["schema_key"], payload=d["proposal"]["payload"], rows=d["rows"],
             rule_settings={s["rule_id"]: {"enabled": s["enabled"], "params": s["params"]} for s in d["settings"]},
             external_llm_enabled=self.external_llm_enabled, request_reference=d["request"]["reference"], tax_year=d["request"]["tax_year"],
+        )
+
+
+    def related(self, proposal_id: UUID) -> RelatedSet | None:
+        """Accepted trial balances and documents of the same request as the held job's proposal (one DB function, size-capped)."""
+        row = self.conn.execute("select agent_get_related(%s, %s) as d", (self.job_id, self.worker_id)).fetchone()
+        d = row["d"] if row else None
+        if d is None or UUID(str(d["self"])) != proposal_id:
+            return None
+        return RelatedSet(
+            self_id=proposal_id, request_reference=d["request"]["reference"], tax_year=d["request"]["tax_year"],
+            rule_settings={x["rule_id"]: {"enabled": x["enabled"], "params": x["params"]} for x in d["settings"]},
+            external_llm_enabled=bool(d["tenant"]["external_llm_enabled"]),
+            proposals=[RelatedProposal(id=p["id"], schema_key=p["schema_key"], payload=p["payload"], file_name=p["file_name"], item_title=p["item_title"], rows=p["rows"]) for p in d["proposals"]],
         )
 
 
