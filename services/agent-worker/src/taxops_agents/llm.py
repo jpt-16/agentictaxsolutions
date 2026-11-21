@@ -13,7 +13,7 @@ import os
 import re
 import urllib.error
 import urllib.request
-from typing import Any, Protocol, TypeVar, runtime_checkable
+from typing import Any, ClassVar, Protocol, TypeVar, runtime_checkable
 from urllib.parse import urlparse
 
 from pydantic import BaseModel
@@ -109,7 +109,7 @@ class DeepSeekGateway:
 
     MAX_RESPONSE_BYTES = 1_000_000
     # What the status usually means, so a misconfiguration is fixable without reading the provider's response body.
-    _HINTS = {
+    _HINTS: ClassVar[dict[int, str]] = {
         400: " Usually a wrong model id or a setting the model does not accept: check DEEPSEEK_MODEL (set DEEPSEEK_DEBUG_ERRORS=1 to see the provider's reason).",
         401: " The API key was rejected: check DEEPSEEK_API_KEY.",
         402: " The account has no balance.",
