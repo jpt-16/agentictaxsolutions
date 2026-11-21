@@ -40,7 +40,7 @@ registry.register(ReconciliationAgent)
 
 
 def main() -> None:
-    parser = argparse.ArgumentParser(description="Tax Operations agent worker")
+    parser = argparse.ArgumentParser(description="Pelloria agent worker")
     parser.add_argument("--once", action="store_true", help="drain the queue, then exit")
     args = parser.parse_args()
     _load_repo_env()

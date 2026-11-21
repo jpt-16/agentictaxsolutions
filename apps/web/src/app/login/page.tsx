@@ -1,5 +1,6 @@
 import { redirect } from "next/navigation";
-import { ShieldCheck, FlaskConical } from "lucide-react";
+import { FlaskConical } from "lucide-react";
+import { LogoMark } from "@/components/logo";
 import { ROLE_LABELS, ROLES, type Role } from "@taxops/core";
 import { listDevLoginUsers } from "@taxops/services";
 import { db } from "@/lib/db";
@@ -33,11 +34,9 @@ export default async function LoginPage({ searchParams }: { searchParams: Promis
   return (
     <main id="main" className="mx-auto flex min-h-screen max-w-3xl flex-col justify-center px-5 py-12">
       <div className="mb-8 flex items-center gap-3">
-        <span className="flex h-10 w-10 items-center justify-center rounded-[12px]" style={{ background: "var(--accent-solid)", color: "#fff" }}>
-          <ShieldCheck size={20} aria-hidden />
-        </span>
+        <LogoMark size={44} />
         <div>
-          <h1 className="t-title text-ink">Tax Operations</h1>
+          <h1 className="t-title text-ink">Pelloria</h1>
           <p className="text-[13px] text-muted">Data collection &amp; validation</p>
         </div>
       </div>

@@ -1,4 +1,4 @@
-# Tax Operations — AI Tax Data Collection & Validation (MVP)
+# Pelloria — AI Tax Data Collection & Validation (MVP)
 
 An enterprise platform where tax teams request data from departments and subsidiaries, collect it, and (in later
 phases) have AI agents standardize and validate it, with human review and a tamper-evident audit trail.

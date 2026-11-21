@@ -1,4 +1,5 @@
-import { LogOut, ShieldCheck } from "lucide-react";
+import { LogOut } from "lucide-react";
+import { LogoMark } from "@/components/logo";
 import { can, ROLE_LABELS } from "@taxops/core";
 import { pendingProposalCount, unreadCount } from "@taxops/services";
 import { requireContext, devAuthEnabled } from "@/lib/auth";
@@ -29,10 +30,8 @@ export default async function AppLayout({ children }: { children: React.ReactNod
         <aside aria-label="Sidebar" className="sidebar material-thick hidden lg:sticky lg:top-0 lg:block lg:h-screen">
           <div className="flex h-full flex-col px-3 py-5">
             <div className="mb-6 flex items-center gap-2.5 px-2">
-              <span className="flex h-8 w-8 items-center justify-center rounded-[9px]" style={{ background: "var(--accent-solid)", color: "#fff" }}>
-                <ShieldCheck size={17} aria-hidden />
-              </span>
-              <span className="t-head text-ink">Tax Operations</span>
+              <LogoMark size={32} />
+              <span className="t-head text-ink">Pelloria</span>
             </div>
             <SidebarNav items={nav} />
             <div className="flex-1" />
