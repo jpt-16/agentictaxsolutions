@@ -13,8 +13,8 @@ import os
 import re
 import urllib.error
 import urllib.request
-from urllib.parse import urlparse
 from typing import Any, Protocol, TypeVar, runtime_checkable
+from urllib.parse import urlparse
 
 from pydantic import BaseModel
 
