@@ -70,7 +70,7 @@ export function NewRequestForm({ year, departments, entities, people, requestId,
   return (
     <form onSubmit={(e) => { e.preventDefault(); submit(false); }} className="grid gap-5 lg:grid-cols-[1fr_380px]" noValidate>
       <div className="space-y-5">
-        <section className="rounded-xl border border-line bg-surface p-5" style={{ boxShadow: "var(--shadow)" }}>
+        <section className="group p-4 sm:p-5">
           <h2 className="mb-4 text-[14px] font-semibold text-ink">Details</h2>
           <div className="space-y-4">
             <div>
@@ -103,7 +103,7 @@ export function NewRequestForm({ year, departments, entities, people, requestId,
           </div>
         </section>
 
-        <section className="rounded-xl border border-line bg-surface p-5" style={{ boxShadow: "var(--shadow)" }}>
+        <section className="group p-4 sm:p-5">
           <div className="mb-4 flex items-center justify-between">
             <div>
               <h2 className="text-[14px] font-semibold text-ink">Information items</h2>
@@ -142,7 +142,7 @@ export function NewRequestForm({ year, departments, entities, people, requestId,
       </div>
 
       <aside className="space-y-5">
-        <section className="rounded-xl border border-line bg-surface p-5" style={{ boxShadow: "var(--shadow)" }}>
+        <section className="group p-4 sm:p-5">
           <h2 className="text-[14px] font-semibold text-ink">Assign to</h2>
           <p className="hint mb-3">Departments, subsidiaries or individuals. Anyone in an assigned group can respond.</p>
 

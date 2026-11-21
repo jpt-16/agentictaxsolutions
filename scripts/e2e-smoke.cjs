@@ -14,6 +14,8 @@ const BASE = process.env.BASE_URL ?? "http://localhost:3000";
   const page = await (await browser.newContext({ viewport: { width: 1360, height: 900 } })).newPage();
   page.setDefaultTimeout(8000);
   page.on("dialog", (d) => d.accept());
+  // Consequential actions use the app's own confirmation sheet (native <dialog>), not window.confirm.
+  const confirmSheet = async () => { await page.waitForSelector("dialog[open] [data-confirm]"); await page.click("dialog[open] [data-confirm]"); await page.waitForSelector("dialog[open]", { state: "detached" }); };
   const step = (m) => console.log("  ✓", m);
   /** Server actions commit asynchronously; reload-and-check until the page reflects the change. */
   const eventually = async (fn, tries = 6) => {
@@ -178,7 +180,8 @@ const BASE = process.env.BASE_URL ?? "http://localhost:3000";
   await page.getByRole("button", { name: "Confirm this is an issue" }).click();
   await page.waitForSelector("text=Confirmed");
   await page.getByRole("button", { name: "Send back to contributor" }).click();
-  await page.waitForSelector("text=Send back to contributor", { state: "detached" });
+  await confirmSheet();
+  await page.waitForSelector('button:has-text("Send back to contributor")', { state: "detached" });
   await eventually(async () => {
     await page.goto(requestUrl);
     await item(ITEM2).getByText("Changes requested", { exact: true }).first().waitFor({ timeout: 1500 });
@@ -236,6 +239,7 @@ const BASE = process.env.BASE_URL ?? "http://localhost:3000";
   await login("Marcus Hale");
   await page.goto(requestUrl);
   await page.click('button:has-text("Sign off & close")');
+  await confirmSheet();
   await page.waitForSelector('span.badge:has-text("Closed")');
   step("manager signed off and closed the request");
   assert.equal((await page.goto(`${BASE}/settings`)).status(), 200);
@@ -294,6 +298,7 @@ const BASE = process.env.BASE_URL ?? "http://localhost:3000";
   await page.getByText("E2E edited draft request").first().waitFor();
   await page.getByText("Renamed draft item").waitFor();
   await page.click('button:has-text("Publish request")');
+  await confirmSheet();
   await page.waitForSelector('span.badge:has-text("Open")');
   assert.equal(await page.getByRole("link", { name: "Edit draft" }).count(), 0);
   await page.goto(`${draftUrl}/edit`);
@@ -314,10 +319,11 @@ const BASE = process.env.BASE_URL ?? "http://localhost:3000";
   await page.goto(`${BASE}/settings`);
   await page.getByLabel("Allow an external AI model").check();
   await page.getByRole("button", { name: "Save" }).first().click();
-  await page.waitForSelector("text=Saved.");
+  await confirmSheet(); // sending excerpts to an external provider asks first
+  await page.waitForSelector("text=Settings saved");
   await page.getByLabel("AI extraction").uncheck(); // turning AI off also turns external use off
   await page.getByRole("button", { name: "Save" }).first().click();
-  await page.waitForSelector("text=Saved.");
+  await page.waitForSelector(".toast:has-text('Settings saved')");
   await page.getByRole("button", { name: "Add a person" }).click();
   await page.fill("#nu-name", "E2E New Person");
   await page.fill("#nu-email", "e2e.person@northwind.example");

@@ -109,6 +109,17 @@ failing model never blocks a user request.
 | 4 | Validation agent (deterministic rules + LLM explanations), finding triage, approval | |
 | 5 | Hardening: permission/isolation suites, audit export, observability, notifications, SSO, administration | Done |
 
+## UI design system
+
+Web-first, following Apple's interface principles. All tokens live in `apps/web/src/app/globals.css`; re-skinning means changing tokens only.
+
+- **Response:** press feedback is `:active` (fires on pointer-down) with a spring release; controls are 44px tall on coarse pointers.
+- **Motion:** CSS `linear()` damped springs (`--spring-smooth` ζ=1.0 by default, `--spring-bouncy` ζ=0.8 only for momentum such as the switch thumb and toasts). The confirmation sheet follows the finger 1:1, rubber-bands upward and projects release velocity to decide dismiss vs settle.
+- **Navigation:** translucent sidebar on desktop, translucent bottom tab bar plus a "More" sheet on phones; `useLinkStatus` shows a pending state on press; sticky toolbar becomes a material only once content scrolls under it and shows the page title after the large title scrolls away.
+- **Feedback:** consequential actions (publish, close, send back, deactivate, external AI) use a native `<dialog>` confirmation (`components/overlays.tsx`); completions use toasts. No `window.confirm`.
+- **Type:** system font stack with size-specific tracking (tight for large titles, none for small text); tabular numerals for figures.
+- **Accessibility:** `prefers-reduced-motion` (no movement, opacity only), `prefers-reduced-transparency` (solid surfaces), `prefers-contrast: more` (defined borders); tables stack into labelled rows on phones.
+
 ## Security audit (post-build)
 
 A full audit after Phase 5 found one High, five Medium and ten Low issues; every finding was reproduced before being reported.

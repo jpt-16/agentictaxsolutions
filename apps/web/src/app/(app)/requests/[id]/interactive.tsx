@@ -2,6 +2,7 @@
 import { useRef, useState, useTransition } from "react";
 import { useRouter } from "next/navigation";
 import { Check, MessageSquarePlus, Paperclip, RotateCcw, Send, X } from "lucide-react";
+import { useConfirm, useToast } from "@/components/overlays";
 import { addCommentAction, closeRequestAction, publishRequestAction, reviewItemAction } from "../actions";
 
 function ErrorLine({ msg }: { msg: string | null }) {
@@ -11,23 +12,25 @@ function ErrorLine({ msg }: { msg: string | null }) {
 export function RequestActions({ requestId, canPublish, canClose }: { requestId: string; canPublish: boolean; canClose: boolean }) {
   const [pending, start] = useTransition();
   const [error, setError] = useState<string | null>(null);
-  const run = (fn: () => ReturnType<typeof publishRequestAction>, confirmMsg: string) => {
-    if (!window.confirm(confirmMsg)) return;
+  const confirm = useConfirm();
+  const toast = useToast();
+  const run = async (fn: () => ReturnType<typeof publishRequestAction>, o: { title: string; message: string; confirmLabel: string; done: string }) => {
+    if (!(await confirm({ title: o.title, message: o.message, confirmLabel: o.confirmLabel }))) return;
     setError(null);
-    start(async () => { const r = await fn(); if (!r.ok) setError(r.error); });
+    start(async () => { const r = await fn(); if (!r.ok) setError(r.error); else toast(o.done); });
   };
   if (!canPublish && !canClose) return null;
   return (
     <div className="flex flex-col items-end">
       {canPublish && (
         <button className="btn btn-primary" disabled={pending}
-          onClick={() => run(() => publishRequestAction(requestId), "Publish this request? Assignees will be able to see it and submit information.")}>
+          onClick={() => run(() => publishRequestAction(requestId), { title: "Publish this request?", message: "Assignees will be able to see it and submit information.", confirmLabel: "Publish", done: "Request published" })}>
           <Send size={14} aria-hidden /> {pending ? "Publishing…" : "Publish request"}
         </button>
       )}
       {canClose && (
         <button className="btn btn-primary" disabled={pending}
-          onClick={() => run(() => closeRequestAction(requestId), "Close this request? It will become read-only.")}>
+          onClick={() => run(() => closeRequestAction(requestId), { title: "Sign off and close?", message: "The request becomes read-only.", confirmLabel: "Close request", done: "Request closed" })}>
           <Check size={14} aria-hidden /> {pending ? "Closing…" : "Sign off & close"}
         </button>
       )}

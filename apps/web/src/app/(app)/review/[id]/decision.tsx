@@ -1,6 +1,7 @@
 "use client";
 import { useState, useTransition } from "react";
 import { Check, Send, X } from "lucide-react";
+import { useConfirm, useToast } from "@/components/overlays";
 import { decideProposalAction, sendBackAction } from "../actions";
 
 export function DecisionForm({ proposalId, kind }: { proposalId: string; kind: "extraction" | "finding" }) {
@@ -35,11 +36,13 @@ export function DecisionForm({ proposalId, kind }: { proposalId: string; kind: "
 }
 
 export function SendBack({ findingId }: { findingId: string }) {
+  const confirm = useConfirm();
+  const toast = useToast();
   const [pending, start] = useTransition();
   const [error, setError] = useState<string | null>(null);
   return (
     <div className="px-5 py-4">
-      <button className="btn btn-primary w-full" disabled={pending} onClick={() => { if (window.confirm("Send this item back to the contributor with this finding as the reason?")) { setError(null); start(async () => { const r = await sendBackAction(findingId); if (!r.ok) setError(r.error); }); } }}>
+      <button className="btn btn-primary w-full" disabled={pending} onClick={async () => { if (await confirm({ title: "Send back to contributor?", message: "This finding becomes the reason, and they are asked to resubmit.", confirmLabel: "Send back" })) { setError(null); start(async () => { const r = await sendBackAction(findingId); if (!r.ok) setError(r.error); else toast("Sent back to contributor"); }); } }}>
         <Send size={14} aria-hidden /> {pending ? "Sending…" : "Send back to contributor"}
       </button>
       {error && <p role="alert" className="mt-2 text-[12.5px]" style={{ color: "var(--red-fg)" }}>{error}</p>}

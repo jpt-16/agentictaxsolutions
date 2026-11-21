@@ -33,11 +33,11 @@ export default async function LoginPage({ searchParams }: { searchParams: Promis
   return (
     <main id="main" className="mx-auto flex min-h-screen max-w-3xl flex-col justify-center px-5 py-12">
       <div className="mb-8 flex items-center gap-3">
-        <span className="flex h-10 w-10 items-center justify-center rounded-xl text-white" style={{ background: "var(--primary)", color: "var(--primary-fg)" }}>
+        <span className="flex h-10 w-10 items-center justify-center rounded-[12px]" style={{ background: "var(--accent-solid)", color: "#fff" }}>
           <ShieldCheck size={20} aria-hidden />
         </span>
         <div>
-          <h1 className="text-xl font-semibold tracking-tight text-ink">Tax Operations</h1>
+          <h1 className="t-title text-ink">Tax Operations</h1>
           <p className="text-[13px] text-muted">Data collection &amp; validation</p>
         </div>
       </div>
@@ -69,7 +69,7 @@ export default async function LoginPage({ searchParams }: { searchParams: Promis
                   {users.filter((u) => u.role === role).map((u) => (
                     <form key={u.userId} action={signInAs}>
                       <input type="hidden" name="email" value={u.email} />
-                      <button type="submit" className="flex w-full items-center gap-3 rounded-xl border border-line bg-surface px-3.5 py-3 text-left transition hover:border-linestrong hover:bg-surface2" style={{ boxShadow: "var(--shadow)" }}>
+                      <button type="submit" className="group pressable flex w-full items-center gap-3 px-3.5 py-3 text-left" style={{ minHeight: 56 }}>
                         <Avatar name={u.name} size={34} />
                         <span className="min-w-0">
                           <span className="block truncate font-medium text-ink">{u.name}</span>

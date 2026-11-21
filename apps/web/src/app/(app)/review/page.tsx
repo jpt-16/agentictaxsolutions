@@ -34,12 +34,12 @@ export default async function ReviewQueuePage({ searchParams }: { searchParams: 
         ))}
       </div>
       <Card>
-        <nav aria-label="Filter by status" className="flex gap-1 border-b border-line px-4 py-3">
+        <nav aria-label="Filter by status" className="border-b border-line px-4 py-3"><div className="segmented">
           {TABS.map((t) => (
             <Link key={t.key} href={qs(t.key)} aria-current={t.key === status ? "page" : undefined}
-              className={cn("rounded-md px-2.5 py-1 text-[13px] font-medium", t.key === status ? "bg-accentsoft text-accent" : "text-muted hover:bg-surface2 hover:text-ink")}>{kind === "finding" ? ({ pending: "Open", accepted: "Confirmed", rejected: "Dismissed", superseded: "" } as Record<string, string>)[t.key] : t.label}</Link>
+              >{kind === "finding" ? ({ pending: "Open", accepted: "Confirmed", rejected: "Dismissed", superseded: "" } as Record<string, string>)[t.key] : t.label}</Link>
           ))}
-        </nav>
+        </div></nav>
         {rows.length === 0 ? (
           <EmptyState icon={<Bot size={18} />} title={status === "pending" ? (kind === "finding" ? "No open findings" : "Nothing to review") : `No ${proposalStatusLabel(kind, status).toLowerCase()} results`}
             body={status === "pending" ? "When a contributor uploads a trial balance and the worker has processed it, the extracted data appears here." : undefined} />

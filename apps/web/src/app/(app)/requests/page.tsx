@@ -58,12 +58,12 @@ export default async function RequestsPage({ searchParams }: { searchParams: Pro
 
       <Card>
         <div className="flex flex-wrap items-center justify-between gap-3 border-b border-line px-4 py-3">
-          <nav aria-label="Filter by status" className="flex flex-wrap gap-1">
+          <nav aria-label="Filter by status" className="segmented">
             {tabs.map((t) => {
               const active = (statusOk ? sp.status : "") === t.key || (!statusOk && t.key === "");
               return (
                 <Link key={t.key || "all"} href={href(base, { status: t.key || undefined, page: undefined })} aria-current={active ? "page" : undefined}
-                  className={cn("rounded-md px-2.5 py-1 text-[13px] font-medium transition-colors", active ? "bg-accentsoft text-accent" : "text-muted hover:bg-surface2 hover:text-ink")}>
+                  >
                   {t.label}
                 </Link>
               );
@@ -88,23 +88,23 @@ export default async function RequestsPage({ searchParams }: { searchParams: Pro
             action={sp.q || statusOk ? <Link href="/requests" className="btn btn-secondary">Clear filters</Link> : can(role, "request.create") ? <Link href="/requests/new" className="btn btn-primary">New request</Link> : undefined} />
         ) : (
           <div className="overflow-x-auto">
-            <table className="tbl">
+            <table className="tbl stack">
               <thead><tr><th>Request</th><th>Assigned to</th><th>Due</th><th>Priority</th><th>Progress</th><th>Status</th></tr></thead>
               <tbody>
                 {rows.map((r) => (
                   <tr key={r.id} className="row-link">
-                    <td className="max-w-[320px]">
-                      <Link href={`/requests/${r.id}`} className="font-medium text-ink hover:text-accent">{r.title}</Link>
+                    <td className="max-w-[320px]" data-label="Request" data-primary>
+                      <Link href={`/requests/${r.id}`} className="font-semibold text-ink hover:text-accent">{r.title}</Link>
                       <div className="tnum mt-0.5 text-[12px] text-muted">{r.reference} · FY{r.taxYear}</div>
                     </td>
-                    <td className="max-w-[240px]">
+                    <td className="max-w-[240px]" data-label="Assigned to">
                       <div className="flex flex-wrap gap-1">
                         {r.assignees.slice(0, 2).map((a) => <Chip key={a.type + a.id} kind={a.type}>{a.label}</Chip>)}
                         {r.assignees.length > 2 && <span className="self-center text-[12px] text-muted">+{r.assignees.length - 2} more</span>}
                         {r.assignees.length === 0 && <span className="text-[12px] text-subtle">Unassigned</span>}
                       </div>
                     </td>
-                    <td className="whitespace-nowrap">
+                    <td className="whitespace-nowrap" data-label="Due">
                       <div className="tnum text-ink">{formatDate(r.dueDate)}</div>
                       {r.status !== "draft" && (
                         <div className={cn("text-[12px]", r.overdue ? "font-medium" : "text-muted")} style={r.overdue ? { color: "var(--red-fg)" } : undefined}>
@@ -112,9 +112,9 @@ export default async function RequestsPage({ searchParams }: { searchParams: Pro
                         </div>
                       )}
                     </td>
-                    <td><PriorityBadge priority={r.priority} /></td>
-                    <td>{r.itemCount ? <ProgressBar value={r.approvedCount} max={r.itemCount} label={`${r.title} progress`} /> : <span className="text-[12px] text-subtle">No items</span>}</td>
-                    <td><RequestStatusBadge status={r.status} /></td>
+                    <td data-label="Priority"><PriorityBadge priority={r.priority} /></td>
+                    <td data-label="Progress">{r.itemCount ? <ProgressBar value={r.approvedCount} max={r.itemCount} label={`${r.title} progress`} /> : <span className="text-[12px] text-subtle">No items</span>}</td>
+                    <td data-label="Status"><RequestStatusBadge status={r.status} /></td>
                   </tr>
                 ))}
               </tbody>

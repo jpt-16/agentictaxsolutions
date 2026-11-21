@@ -46,14 +46,14 @@ export const PriorityBadge = ({ priority }: { priority: Priority }) => (
 
 /* ---------- layout ---------- */
 export function Card({ children, className }: { children: ReactNode; className?: string }) {
-  return <section className={cn("rounded-xl border border-line bg-surface", className)} style={{ boxShadow: "var(--shadow)" }}>{children}</section>;
+  return <section className={cn("group", className)}>{children}</section>;
 }
 
 export function CardHeader({ title, subtitle, action }: { title: string; subtitle?: string; action?: ReactNode }) {
   return (
-    <header className="flex items-start justify-between gap-4 border-b border-line px-5 py-4">
+    <header className="flex items-start justify-between gap-4 border-b border-line px-4 py-4 sm:px-5">
       <div>
-        <h2 className="text-[14px] font-semibold text-ink">{title}</h2>
+        <h2 className="t-head text-ink">{title}</h2>
         {subtitle && <p className="mt-0.5 text-[12.5px] text-muted">{subtitle}</p>}
       </div>
       {action}
@@ -65,7 +65,7 @@ export function PageHeader({ title, subtitle, actions, crumbs }: {
   title: ReactNode; subtitle?: ReactNode; actions?: ReactNode; crumbs?: { href?: string; label: string }[];
 }) {
   return (
-    <div className="mb-6">
+    <div className="mb-6 sm:mb-8">
       {crumbs && (
         <nav aria-label="Breadcrumb" className="mb-2 flex items-center gap-1.5 text-[12.5px] text-muted">
           {crumbs.map((c, i) => (
@@ -78,10 +78,10 @@ export function PageHeader({ title, subtitle, actions, crumbs }: {
       )}
       <div className="flex flex-wrap items-start justify-between gap-4">
         <div className="min-w-0">
-          <h1 className="text-[22px] font-semibold leading-tight tracking-tight text-ink">{title}</h1>
-          {subtitle && <p className="mt-1 text-[13.5px] text-muted">{subtitle}</p>}
+          <h1 data-large-title className="t-large text-ink">{title}</h1>
+          {subtitle && <p className="mt-1.5 text-[15px] text-muted">{subtitle}</p>}
         </div>
-        {actions && <div className="flex items-center gap-2">{actions}</div>}
+        {actions && <div className="flex flex-wrap items-center gap-2">{actions}</div>}
       </div>
     </div>
   );
@@ -103,7 +103,7 @@ export function ProgressBar({ value, max, tone = "green", label }: { value: numb
   return (
     <div className="flex items-center gap-2.5">
       <div role="progressbar" aria-valuemin={0} aria-valuemax={max} aria-valuenow={value} aria-label={label ?? "Progress"}
-        className="h-1.5 w-24 flex-none overflow-hidden rounded-full" style={{ background: "var(--slate-bg)" }}>
+        className="h-1.5 w-20 flex-none sm:w-24 overflow-hidden rounded-full" style={{ background: "var(--slate-bg)" }}>
         <div className="h-full rounded-full" style={{ width: `${pct}%`, background: tone === "green" ? "var(--bar-approved)" : "var(--bar-progress)" }} />
       </div>
       <span className="tnum text-[12px] text-muted">{value}/{max}</span>
@@ -124,7 +124,7 @@ export function Avatar({ name, size = 28 }: { name: string; size?: number }) {
 export function Chip({ children, kind }: { children: ReactNode; kind?: "department" | "entity" | "user" }) {
   const label = kind === "department" ? "Dept" : kind === "entity" ? "Entity" : kind === "user" ? "Person" : null;
   return (
-    <span className="inline-flex items-center gap-1.5 rounded-md border border-line bg-surface2 px-2 py-0.5 text-[12px] text-body">
+    <span className="inline-flex items-center gap-1.5 rounded-full bg-surface2 px-2.5 py-0.5 text-[12px] border border-line text-body">
       {label && <span className="text-[10.5px] font-semibold uppercase tracking-wide text-subtle">{label}</span>}
       {children}
     </span>

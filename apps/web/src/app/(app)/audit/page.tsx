@@ -64,10 +64,10 @@ export default async function AuditPage({ searchParams }: { searchParams: Promis
 
       <Card>
         <div className="flex flex-wrap items-center justify-between gap-3 border-b border-line px-4 py-3">
-          <nav aria-label="Filter by category" className="flex flex-wrap gap-1">
+          <nav aria-label="Filter by category" className="segmented">
             {CATEGORIES.map((c) => (
               <Link key={c.key || "all"} href={qs({ cat: c.key || undefined, page: undefined })} aria-current={cat === c.key ? "page" : undefined}
-                className={`rounded-md px-2.5 py-1 text-[13px] font-medium ${cat === c.key ? "bg-accentsoft text-accent" : "text-muted hover:bg-surface2 hover:text-ink"}`}>{c.label}</Link>
+                >{c.label}</Link>
             ))}
           </nav>
           <form action="/audit" role="search" className="flex gap-2">

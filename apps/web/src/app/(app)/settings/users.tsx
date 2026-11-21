@@ -2,6 +2,7 @@
 import { useState, useTransition } from "react";
 import { UserPlus } from "lucide-react";
 import { ROLES, ROLE_LABELS, type Role } from "@taxops/core";
+import { useConfirm, useToast } from "@/components/overlays";
 import { createUserAction, updateUserAction } from "./actions";
 import { Badge } from "@/components/ui";
 
@@ -14,7 +15,9 @@ function Row({ u, depts, ents, self }: { u: U; depts: Opt[]; ents: Opt[]; self: 
   const [pending, start] = useTransition();
   const [msg, setMsg] = useState<string | null>(null);
   const dirty = role !== u.role || dept !== (u.departmentId ?? "") || ent !== (u.entityId ?? "");
-  const run = (patch: Record<string, unknown>, ok: string) => { setMsg(null); start(async () => { const r = await updateUserAction(u.id, patch); setMsg(r.ok ? ok : r.error); }); };
+  const confirm = useConfirm();
+  const toast = useToast();
+  const run = (patch: Record<string, unknown>, ok: string) => { setMsg(null); start(async () => { const r = await updateUserAction(u.id, patch); if (r.ok) toast(`${u.name}: ${ok.toLowerCase()}`); else setMsg(r.error); }); };
   return (
     <tr className={u.isActive ? "" : "opacity-60"}>
       <td><p className="font-medium text-ink">{u.name}{self && <span className="ml-1.5 text-[11px] font-normal text-muted">(you)</span>}</p><p className="text-[12px] text-muted">{u.email}</p></td>
@@ -24,7 +27,7 @@ function Row({ u, depts, ents, self }: { u: U; depts: Opt[]; ents: Opt[]; self: 
       <td className="whitespace-nowrap">
         <div className="flex items-center gap-2">
           <button className="btn btn-secondary btn-sm" disabled={!dirty || pending} onClick={() => run({ role, departmentId: dept || null, entityId: ent || null }, "Saved")}>Save</button>
-          {!self && <button className="btn btn-ghost btn-sm" disabled={pending} onClick={() => { if (u.isActive && !window.confirm(`Deactivate ${u.name}? They will be signed out and lose access immediately.`)) return; run({ isActive: !u.isActive }, u.isActive ? "Deactivated" : "Reactivated"); }}>{u.isActive ? "Deactivate" : "Reactivate"}</button>}
+          {!self && <button className="btn btn-ghost btn-sm" disabled={pending} onClick={async () => { if (u.isActive && !(await confirm({ title: `Deactivate ${u.name}?`, message: "They are signed out and lose access immediately.", confirmLabel: "Deactivate", destructive: true }))) return; run({ isActive: !u.isActive }, u.isActive ? "Deactivated" : "Reactivated"); }}>{u.isActive ? "Deactivate" : "Reactivate"}</button>}
         </div>
         {msg && <p role="status" className="mt-1 text-[12px] text-muted">{msg}</p>}
       </td>

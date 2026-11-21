@@ -20,12 +20,12 @@ function Kpi({ label, value, hint, icon: Icon, href, tone }: {
   label: string; value: string | number; hint: string; icon: typeof FileStack; href?: string; tone?: "red" | "amber";
 }) {
   const body = (
-    <div className="flex h-full flex-col rounded-xl border border-line bg-surface p-4 transition-colors hover:border-linestrong" style={{ boxShadow: "var(--shadow)" }}>
+    <div className="group pressable flex h-full flex-col p-4">
       <div className="flex items-center justify-between text-muted">
         <span className="text-[12.5px] font-medium">{label}</span>
         <Icon size={16} aria-hidden style={tone ? { color: `var(--${tone}-fg)` } : undefined} />
       </div>
-      <p className="tnum mt-2 text-[28px] font-semibold leading-none tracking-tight text-ink" style={tone && Number(value) > 0 ? { color: `var(--${tone}-fg)` } : undefined}>{value}</p>
+      <p className="tnum mt-2 text-[30px] font-semibold leading-none text-ink" style={tone && Number(value) > 0 ? { color: `var(--${tone}-fg)` } : undefined}>{value}</p>
       <p className="mt-2 text-[12px] text-muted">{hint}</p>
     </div>
   );
@@ -59,7 +59,7 @@ export default async function DashboardPage() {
         <Kpi label="Items approved" value={`${d.kpis.completionPct}%`} hint="Across active requests" icon={CheckCircle2} />
       </div>
 
-      <div className="mt-5 grid gap-5 lg:grid-cols-[1fr_380px]">
+      <div className="mt-5 grid gap-5 lg:grid-cols-[minmax(0,1fr)_360px]">
         <div className="space-y-5">
           <Card>
             <CardHeader title="Upcoming deadlines" subtitle="Soonest first, including overdue work"
@@ -68,21 +68,21 @@ export default async function DashboardPage() {
               <EmptyState icon={<CalendarClock size={18} />} title="Nothing due" body="There are no active requests with deadlines right now." />
             ) : (
               <div className="overflow-x-auto">
-                <table className="tbl">
+                <table className="tbl stack">
                   <thead><tr><th>Request</th><th>Due</th><th>Progress</th><th>Status</th></tr></thead>
                   <tbody>
                     {d.upcoming.map((r) => (
                       <tr key={r.id} className="row-link">
-                        <td>
-                          <Link href={`/requests/${r.id}`} className="font-medium text-ink hover:text-accent">{r.title}</Link>
+                        <td data-label="Request" data-primary>
+                          <Link href={`/requests/${r.id}`} className="font-semibold text-ink hover:text-accent">{r.title}</Link>
                           <div className="mt-0.5 flex items-center gap-2 text-[12px] text-muted"><span className="tnum">{r.reference}</span><PriorityBadge priority={r.priority} /></div>
                         </td>
-                        <td className="whitespace-nowrap">
+                        <td className="whitespace-nowrap" data-label="Due">
                           <div className="tnum text-ink">{formatDate(r.dueDate)}</div>
                           <div className={cn("text-[12px]", r.overdue ? "font-medium" : "text-muted")} style={r.overdue ? { color: "var(--red-fg)" } : undefined}>{dueLabel(r.daysLeft, r.overdue)}</div>
                         </td>
-                        <td><ProgressBar value={r.approvedCount} max={r.itemCount} label={`${r.title} progress`} /></td>
-                        <td><RequestStatusBadge status={r.status} /></td>
+                        <td data-label="Progress"><ProgressBar value={r.approvedCount} max={r.itemCount} label={`${r.title} progress`} /></td>
+                        <td data-label="Status"><RequestStatusBadge status={r.status} /></td>
                       </tr>
                     ))}
                   </tbody>
