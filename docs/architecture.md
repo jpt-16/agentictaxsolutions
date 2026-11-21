@@ -16,7 +16,7 @@
 | Domain/services | TypeScript | `core` is pure; `services` owns authorization, scoping, transitions, audit |
 | Database | PostgreSQL 16, Drizzle ORM, SQL migrations | RLS + composite tenant FKs |
 | AI runtime | **Python** worker (`services/agent-worker`) | Chosen for the ML/data ecosystem. Isolated behind a contract |
-| LLM | **Gemini** via a provider-agnostic gateway | Cost-driven choice. Swappable; redaction + schema-validated output live in the gateway |
+| LLM | **Gemini** or **DeepSeek** via a provider-agnostic gateway (`LLM_PROVIDER`) | Cost-driven choice. Swappable; redaction + schema-validated output live in the gateway. DeepSeek uses its OpenAI-compatible API with the standard library only; it never follows redirects, refuses non-https URLs, and its errors carry no prompt, output or key |
 | Queue | Postgres `jobs` table, `FOR UPDATE SKIP LOCKED` (built in Phase 2) | **Changed from the original proposal (pg-boss).** pg-boss is Node-only; a plain SQL queue is language-neutral so the Python worker can consume it with no extra infrastructure |
 | Auth | Dev persona picker (stub); OIDC/SAML SSO planned | Downstream code only needs the session cookie and `loadSession()` |
 
@@ -184,7 +184,7 @@ The three items first accepted as known risks were fixed afterwards:
 - No MFA of its own (delegate to the IdP) and no session revocation list beyond role/active re-checks on every request.
 
 **AI**
-- **The Gemini path has never run against the live API**; it is tested with a fake gateway only (hallucinated columns, prompt injection, redaction, number-guard on explanations). Confirm `GEMINI_MODEL` and your provider's retention terms first.
+- **Neither the Gemini nor the DeepSeek path has run against its live API**; the DeepSeek gateway is tested against a local fake server and both against fake gateways; it is tested with a fake gateway only (hallucinated columns, prompt injection, redaction, number-guard on explanations). Confirm the model id (`GEMINI_MODEL` / `DEEPSEEK_MODEL`) and your provider's data-retention and data-residency terms first.
 - Extraction and validation cover **trial balances only**, with English and a few German header synonyms. The "usual side" rule assumes standard 1xxx-8xxx numbering and can be a false alarm (it says so). Rules look at one file at a time: there is **no cross-entity or year-over-year validation** yet (it needs prior-period data and a cross-file data model). The intercompany rule only lists balances to confirm.
 - The **document agent** reads text-based PDF, Word and text files. Scanned PDFs have no text layer and are reported as unreadable (no OCR). It extracts facts for a person to check; it does not decide whether a document is genuine or signed.
 - Accepted data feeds validation but nothing downstream (returns, workpapers, ERP connectors) yet.

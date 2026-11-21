@@ -26,7 +26,7 @@ Everything here is invented for testing. Regenerate with `python3 scripts/make-s
 4. Sign in as **Naomi Clarke** or **Tomas Berg** (reviewers), open **AI review**, check the result against the file, accept it, then look at the findings.
 5. As the manager, open **Reports** and download the status report or the request's approved data pack.
 
-AI extraction is on for the demo tenant. Turn on the external model (Gemini) in **Settings** (as Priya Raman) only if you have set `GEMINI_API_KEY`.
+AI extraction is on for the demo tenant. Turn on the external model in **Settings** (as Priya Raman) only if you have set a key for your provider (`GEMINI_API_KEY`, or `DEEPSEEK_API_KEY` and `DEEPSEEK_MODEL` with `LLM_PROVIDER=deepseek`).
 
 ## Stress-test files: `samples/messy/`
 

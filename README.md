@@ -68,7 +68,7 @@ Process uploaded files with the AI worker (drains the queue and exits; omit `--o
 cd services/agent-worker && pip install -e . && cd ../.. && pnpm worker:once
 ```
 
-The worker reads the repo `.env`. With no `GEMINI_API_KEY`, or while a tenant has external LLM off (the default), extraction
+The worker reads the repo `.env`. With no API key for the chosen provider (`LLM_PROVIDER=gemini` or `deepseek`), or while a tenant has external LLM off (the default), extraction
 uses deterministic header matching only and no content leaves the system. To allow the model for a tenant:
 `pnpm tenant:flags northwind --external-llm on`.
 
