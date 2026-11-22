@@ -32,6 +32,7 @@ export function DecisionForm({ proposalId, kind }: { proposalId: string; kind: "
       </div>
       {error && <p role="alert" className="mt-2 text-[12.5px]" style={{ color: "var(--red-fg)" }}>{error}</p>}
       <p className="hint mt-3">Decisions are final and recorded in the audit history with your name.</p>
+      <p className="hint mt-2">The AI only suggests. By deciding, you confirm you have checked this against the source. You and your organization are responsible for what you approve, and Pelloria is not liable for mistakes in tax.</p>
     </div>
   );
 }

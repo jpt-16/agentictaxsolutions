@@ -249,7 +249,7 @@ html[data-title-collapsed="true"] .toolbar-title { opacity: 1; transform: none; 
   color: var(--subtle); background: none; border: 0; font-family: inherit; -webkit-tap-highlight-color: transparent; transition: color 140ms ease, transform var(--t-ui) var(--spring-smooth); }
 .tab:active { transform: scale(0.92); transition-duration: 60ms; }
 .tab[aria-current="page"] { color: var(--accent); }
-.tab .tab-badge { position: absolute; top: 0; left: calc(50% + 6px); min-width: 17px; height: 17px; padding: 0 4px; border-radius: 999px; background: #ff3b30; color: #fff; font-size: 11px; font-weight: 700; line-height: 17px; text-align: center; font-variant-numeric: tabular-nums; }
+.tab .tab-badge { position: absolute; top: 0; left: calc(50% + 6px); min-width: 17px; height: 17px; padding: 0 4px; border-radius: 999px; background: #c8101e; color: #fff; font-size: 11px; font-weight: 700; line-height: 17px; text-align: center; font-variant-numeric: tabular-nums; }
 
 /* -------------------------------------------------------------------------------- popover, dialog, sheet, toast */
 .menu { position: absolute; z-index: 60; min-width: 220px; padding: 6px; border-radius: 14px; border: 0.5px solid var(--line-strong); box-shadow: var(--shadow-2);

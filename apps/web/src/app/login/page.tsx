@@ -83,6 +83,9 @@ export default async function LoginPage({ searchParams }: { searchParams: Promis
           </div>
         </>
       )}
+      <p className="mt-8 max-w-2xl text-[12.5px] leading-relaxed text-muted">
+        Pelloria is a data tool, not a tax adviser. Its AI agents only make suggestions. A person reviews and approves every result, and your organization is responsible for its own tax positions, filings and decisions. Pelloria is not liable for mistakes in tax. This is a prototype using fictional data.
+      </p>
     </main>
   );
 }

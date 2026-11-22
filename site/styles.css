@@ -214,6 +214,16 @@ body { margin: 0; }
 .pill { color: var(--warn-fg) !important; }
 .strip.big li { font-size: clamp(1.2rem, 2.6vw, 1.6rem); }
 .band-cta { display: flex; flex-wrap: wrap; gap: 12px; margin-top: 4px; }
+.legal { max-width: 760px; }
+.legal > * + * { margin-top: 16px; }
+.legal h2 { font-size: clamp(1.25rem, 2.4vw, 1.55rem); margin-top: 40px; }
+.legal ul { padding-left: 22px; display: grid; gap: 8px; }
+.legal p, .legal li { font-size: 16.5px; }
+.draft { padding: 14px 18px; border-radius: 14px; background: var(--signal-bg); color: var(--warn-fg); font-size: 15px; }
+.callout { padding: 22px 26px; border-radius: 18px; background: var(--ink); color: var(--bg); display: grid; gap: 10px; }
+.callout h2, .callout h3 { color: var(--bg); margin-top: 0 !important; font-size: 1.3rem; } .callout p { color: var(--bg); opacity: .92; max-width: 44em; } .callout a { color: var(--bg); }
+.disc { max-width: 60em; font-size: 14px; line-height: 1.55; }
 footer .links { display: flex; flex-wrap: wrap; gap: 18px; }
+footer .wrap { row-gap: 14px; }
 footer .links a { color: var(--muted); text-decoration: none; }
 footer .links a:hover { color: var(--ink); }
