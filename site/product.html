@@ -1,0 +1,69 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>Product · Pelloria</title>
+<meta name="description" content="The four Pelloria agents: extraction, validation, documents and reconciliation, and how a person reviews every result.">
+<link rel="icon" href="/icon.svg" type="image/svg+xml">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Bricolage+Grotesque:opsz,wght@12..96,500;12..96,600;12..96,700&family=Hanken+Grotesk:wght@400;500;600&family=JetBrains+Mono:wght@400;500&display=swap">
+<link rel="stylesheet" href="/styles.css">
+</head>
+<body>
+<svg width="0" height="0" style="position:absolute" aria-hidden="true"><symbol id="mark" viewBox="0 0 512 512"><rect width="512" height="512" rx="116" fill="var(--tile)"/><g transform="translate(256 256) scale(1.3) translate(-262 -256)"><path d="M209 118a106 106 0 0 1 0 212" fill="none" stroke="#EAF6F4" stroke-width="24"/><path d="M209 158a66 66 0 0 1 0 132" fill="none" stroke="#3CC4B5" stroke-width="24"/><rect x="197" y="106" width="24" height="300" rx="12" fill="#EAF6F4"/><circle cx="243" cy="224" r="12" fill="#F5B84B"/></g></symbol></svg>
+<header class="top">
+  <div class="wrap">
+    <a class="brand" href="/" aria-label="Pelloria home"><svg role="img" aria-hidden="true"><use href="#mark"/></svg>Pelloria</a>
+    <nav class="nav" aria-label="Pages"><a href="/product" aria-current="page">Product</a><a href="/how-it-works">How it works</a><a href="/trust">Trust</a><a href="/faq">FAQ</a></nav>
+    <span class="pill">Prototype · fictional data</span>
+  </div>
+</header>
+<main id="top">
+
+<div class="page-head"><div class="wrap"><p class="eyebrow">Product</p><h1>Four agents, each with one job, and a person at the end.</h1><p class="sub">Agents work on the files in a request, one building on the last. None of them can approve anything.</p></div></div>
+<section style="padding-top:20px">
+  <div class="wrap">
+    <div class="flow" role="img" aria-label="Extraction feeds validation, documents feed reconciliation, and a person reviews everything">
+      <div class="node"><b>Extraction</b><span>Reads the tables</span></div>
+      <div class="node"><b>Validation</b><span>Checks the numbers</span></div>
+      <div class="node"><b>Documents</b><span>Reads letters and PDFs</span></div>
+      <div class="node"><b>Reconciliation</b><span>Compares across files</span></div>
+      <div class="node human"><b>A person</b><span>Approves or rejects</span></div>
+    </div>
+    <div class="agent-detail"><div><p class="eyebrow">Extraction</p><h2>Finds the table, whatever the layout.</h2><p class="lead-block">Opens a spreadsheet, works out which column is which, and turns it into clean data.</p></div>
+<div class="kv"><div><b>Reads</b><p>Excel and CSV trial balances, including headers in several languages and tables stacked in one sheet.</p></div><div><b>Checks</b><p>Every number it reads. Any it cannot read is flagged, never guessed.</p></div><div><b>You see</b><p>The mapping it chose (for example Soll → Debit), the rows read, and whether an AI model was used at all.</p></div><div><b>Example</b><p style="font:400 13.5px/1.5 var(--f-mono);color:var(--muted)">Soll / Haben → Debit / Credit</p></div></div></div>
+    <div class="agent-detail"><div><p class="eyebrow">Validation</p><h2>Eleven checks before a human looks.</h2><p class="lead-block">Runs a fixed set of accounting checks on the extracted data and points at the exact rows.</p></div>
+<div class="kv"><div><b>Reads</b><p>The data the extraction agent produced.</p></div><div><b>Checks</b><p>Totals that do not balance, duplicate accounts, flipped signs, missing periods and more.</p></div><div><b>You see</b><p>A list of findings, each tied to the row it came from, with a severity.</p></div><div><b>Example</b><p style="font:400 13.5px/1.5 var(--f-mono);color:var(--muted)">debits ≠ credits · account 4000 appears twice</p></div></div></div>
+    <div class="agent-detail"><div><p class="eyebrow">Documents</p><h2>Reads letters and PDFs, and quotes the source.</h2><p class="lead-block">Pulls the key facts out of confirmations and supporting letters.</p></div>
+<div class="kv"><div><b>Reads</b><p>Word, PDF and text files.</p></div><div><b>Checks</b><p>That every fact it reports can be found in the document itself.</p></div><div><b>You see</b><p>Dates, parties and amounts, with the page where each one was found.</p></div><div><b>Example</b><p style="font:400 13.5px/1.5 var(--f-mono);color:var(--muted)">&quot;as of 31 December 2025&quot; · p. 2</p></div></div></div>
+    <div class="agent-detail"><div><p class="eyebrow">Reconciliation</p><h2>Compares what different files say.</h2><p class="lead-block">Sets a trial balance against the letters in the same request.</p></div>
+<div class="kv"><div><b>Reads</b><p>The results of the other agents, within one request.</p></div><div><b>Checks</b><p>Amounts that do not match, directions that flip, and currencies that disagree.</p></div><div><b>You see</b><p>A finding that says what differs, by how much, and what to check.</p></div><div><b>Example</b><p style="font:400 13.5px/1.5 var(--f-mono);color:var(--muted)">TB: CAD 410,000 · letter: USD 410,000</p></div></div></div>
+    <div class="agent-detail" style="border-top:1px solid var(--line)"><div><p class="eyebrow">What you see on screen</p><h2>Every result comes with its working.</h2><p class="lead-block">A reviewer can open "How it was produced" on any result to see whether a model was used, how many calls it made, and what it was checked against.</p></div><div class="stage" style="padding-bottom:0"><div class="card main" role="group" aria-label="Example review screen">
+  <div class="card-head"><div><b>Trial balance · Meridian GmbH</b><small>de_saldenliste_eur.xlsx · sheet 1</small></div><span class="chip ok">Ready for review</span></div>
+  <div class="map">
+    <div class="map-row"><span>Account</span><b>Konto → Account</b></div>
+    <div class="map-row"><span>Debit</span><b>Soll → Debit</b></div>
+    <div class="map-row"><span>Credit</span><b>Haben → Credit</b></div>
+    <div class="map-row"><span>Rows read</span><b>312 · 0 model calls</b></div>
+  </div>
+  <div class="finding"><b>Totals differ by EUR 1,250.00</b>Debits and credits do not balance. Check the rows marked in the sheet before approving.</div>
+  <div class="card-foot"><span class="mini p">Approve</span><span class="mini s">Request changes</span><span class="mini s">How it was produced</span></div>
+</div></div></div>
+    <div class="head" style="margin-top:20px"><p class="eyebrow">Files it reads</p></div>
+    <ul class="strip big" aria-label="Supported file types"><li>XLSX</li><li>CSV</li><li>PDF</li><li>DOCX</li><li>TXT</li><li>PNG</li><li>JPG</li></ul>
+  </div>
+</section>
+<section class="close"><div class="wrap"><div class="band"><h2>See how a request moves from start to finish.</h2><div class="band-cta"><a class="btn btn-primary" href="/how-it-works">How it works <span aria-hidden="true">→</span></a></div></div></div></section>
+
+</main>
+<footer>
+  <div class="wrap">
+    <a class="brand" href="/"><svg role="img" aria-hidden="true"><use href="#mark"/></svg>Pelloria</a>
+    <div class="links"><a href="/product">Product</a><a href="/how-it-works">How it works</a><a href="/trust">Trust</a><a href="/faq">FAQ</a></div>
+    <span>A prototype. Every name, file and number shown is fictional.</span>
+  </div>
+</footer>
+</body>
+</html>
