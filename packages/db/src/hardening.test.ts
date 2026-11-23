@@ -257,6 +257,7 @@ describe("write access is pinned to exactly what the application needs", () => {
     expect(Object.fromEntries(cols.map((r) => [r.table_name, r.cols]))).toEqual({
       notifications: "read_at",
       request_templates: "archived_at",
+      proposal_entities: "entity_id,set_at,set_by,source",
       proposals: "decided_at,decided_by,decision_note,status",
       request_items: "status,updated_at",
       requests: "closed_at,description,due_date,priority,published_at,status,tax_year,title,updated_at",

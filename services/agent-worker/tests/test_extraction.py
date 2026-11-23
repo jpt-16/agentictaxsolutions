@@ -43,7 +43,8 @@ def test_title_rows_blank_lines_and_total_rows_are_handled():
     assert p.payload["header_row"] == 4
     assert p.payload["stats"]["row_count"] == 6
     assert p.payload["stats"]["reported_total_debit"] == "2200" and "totals_mismatch" not in p.payload["stats"]
-    assert p.payload["metadata"] == {"entity_hint": "NWG – EUR", "currency": "EUR", "currency_source": "sheet title", "period": "31 Dec 2025"}
+    assert p.payload["metadata"] == {"entity_hint": "NWG – EUR", "currency": "EUR", "currency_source": "sheet title", "period": "31 Dec 2025",
+                                         "title_text": "Northwind GmbH – Trial Balance As at 31 Dec 2025 Currency: EUR"}
     assert [r.source_row for r in res.rows][:2] == [5, 6]  # lineage points at real sheet rows
 
 
@@ -256,3 +257,15 @@ def test_the_sheet_name_is_inside_the_data_fence():
     _, gw = run(FakeFiles(make_xlsx({evil[:31]: HARD})), FakeGateway([llm_says()]))
     prompt = gw.calls[0]
     assert prompt.index(evil[:31]) > prompt.index("<sheet_data>") and prompt.index(evil[:31]) < prompt.index("</sheet_data>")
+
+
+def test_title_rows_are_kept_so_the_app_can_match_an_entity_named_there():
+    rows = [["Northwind France SAS – Trial Balance"], ["As at 31 Dec 2025"], *TB]
+    res, _ = run(FakeFiles(make_xlsx({"TB": rows})))
+    meta = res.proposals[0].payload["metadata"]
+    assert "Northwind France SAS" in meta["title_text"] and "31 Dec 2025" in meta["title_text"]
+
+
+def test_a_sheet_without_title_rows_has_no_title_text():
+    res, _ = run(FakeFiles(make_xlsx({"TB": TB})))
+    assert "title_text" not in res.proposals[0].payload["metadata"]

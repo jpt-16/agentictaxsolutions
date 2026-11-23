@@ -140,7 +140,7 @@ describe("deciding", () => {
     const { id, f } = await fresh();
     const [a, b] = await Promise.allSettled([decideProposal(await rev(), id, { decision: "accepted" }), decideProposal(await mgr(), id, { decision: "rejected", note: "disagree" })]);
     expect([a, b].filter((r) => r.status === "fulfilled")).toHaveLength(1);
-    const decisions = (await listAudit(await aud(), { requestRef: f.requestId })).rows.filter((e) => e.action.startsWith("proposal.") && e.action !== "proposal.created");
+    const decisions = (await listAudit(await aud(), { requestRef: f.requestId })).rows.filter((e) => e.action.startsWith("proposal.") && e.action !== "proposal.created" && !e.action.startsWith("proposal.entity_"));
     expect(decisions).toHaveLength(1);
   });
 });

@@ -8,6 +8,7 @@ import {
 } from "@taxops/db";
 import { auditActorOf, NotFoundError, scoped, type ServiceContext, assertUuid } from "./context";
 import { reviewItem } from "./requests";
+import { confirmEntityOnAccept, entityStateFor } from "./entities";
 
 export interface ProposalFilters {
   kind?: "extraction" | "finding";
@@ -76,6 +77,7 @@ export async function getProposal(ctx: ServiceContext, proposalId: string, opts:
     const parsedFinding = p.kind === "finding" ? findingPayloadSchema.safeParse(p.payload) : null;
     const [source] = p.sourceProposalId ? await tx.select({ id: proposals.id, title: proposals.title }).from(proposals).where(eq(proposals.id, p.sourceProposalId)) : [];
     const findings = p.kind === "extraction" ? await findingsForSource(tx, p.id) : [];
+    const entity = await entityStateFor(tx, p, file!.name);
 
     return {
       id: p.id, title: p.title, detail: p.detail, kind: p.kind, status: p.status, severity: p.severity, confidence: Number(p.confidence),
@@ -85,7 +87,7 @@ export async function getProposal(ctx: ServiceContext, proposalId: string, opts:
       document: parsedDoc?.success ? (parsedDoc.data as DocumentPayload) : null,
       isDocument: p.schemaKey === "supporting_document",
       finding: parsedFinding?.success ? (parsedFinding.data as FindingPayload) : null,
-      source: source ?? null, findings,
+      source: source ?? null, findings, entity,
       request: { id: req!.id, reference: req!.reference, title: req!.title },
       item: { id: item!.id, title: item!.title },
       file: { id: file!.id, name: file!.name, size: file!.size, previewable: /\.(xlsx|csv)$/i.test(file!.name) },
@@ -143,6 +145,10 @@ export async function decideProposal(ctx: ServiceContext, proposalId: string, ra
   return scoped(ctx, async (tx) => {
     const [p] = await tx.select().from(proposals).where(eq(proposals.id, proposalId));
     if (!p) throw new NotFoundError("Proposal");
+    if (input.decision === "accepted" && p.status === "pending") {
+      const [f] = await tx.select({ name: files.originalName }).from(files).where(eq(files.id, p.fileId));
+      await confirmEntityOnAccept(tx, ctx, p, f?.name ?? "");
+    }
     // Conditional update: if two reviewers click at once, exactly one wins.
     const updated = await tx.update(proposals).set({
       status: input.decision, decidedBy: ctx.session.userId, decidedAt: new Date(), decisionNote: input.note || null,

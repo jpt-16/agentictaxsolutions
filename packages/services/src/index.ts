@@ -18,3 +18,4 @@ export * from "./audit-export";
 export * from "./reports";
 export * from "./templates";
 export * from "./mentions";
+export * from "./entities";

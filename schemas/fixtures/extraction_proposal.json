@@ -59,7 +59,8 @@
       "metadata": {
         "entity_hint": "NWU – GBP",
         "currency": "GBP",
-        "currency_source": "sheet title"
+        "currency_source": "sheet title",
+        "title_text": "Northwind UK – TB Currency: GBP"
       },
       "notes": [],
       "parse_rate": 1.0,

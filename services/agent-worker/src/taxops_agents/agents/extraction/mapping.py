@@ -383,6 +383,8 @@ def metadata_hints(grid: Grid, header_row: int, window: int | None = None, entit
         syms = {code for sym, code in _SYMBOL_CCY if any(sym in c for c in cells)}
         if len(syms) == 1:
             hints["currency"], hints["currency_source"] = next(iter(syms)), "amount symbols"
+    if above.strip():
+        hints["title_text"] = above.strip()[:200]  # lets the app match an entity named in the sheet's title rows
     text = " ".join([above, grid.name if not window else ""])
     m = re.search(r"\b(\d{4}-\d{2}-\d{2}|\d{1,2} [A-Za-z]{3,9} \d{4}|FY ?\d{4})\b", text)
     if m:

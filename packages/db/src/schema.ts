@@ -383,6 +383,29 @@ export const proposals = pgTable(
   ],
 );
 
+/**
+ * Which legal entity a trial balance belongs to. One row per proposal, written by a person's decision (never by an agent), and frozen
+ * once the proposal is decided. Reconciliation reads it so it can compare one entity's books with another's.
+ */
+export const proposalEntities = pgTable(
+  "proposal_entities",
+  {
+    proposalId: uuid("proposal_id").primaryKey(),
+    tenantId: tenantId().references(() => tenants.id),
+    entityId: uuid("entity_id").notNull(),
+    /** How the entity was determined: from the request's assignment, the uploader's own entity, text in the file, or a reviewer's choice. */
+    source: text("source").notNull(),
+    setBy: uuid("set_by").notNull(),
+    setAt: timestamp("set_at", { withTimezone: true }).notNull().defaultNow(),
+  },
+  (t) => [
+    foreignKey({ columns: [t.tenantId, t.proposalId], foreignColumns: [proposals.tenantId, proposals.id], name: "proposal_entities_proposal_fk" }),
+    foreignKey({ columns: [t.tenantId, t.entityId], foreignColumns: [legalEntities.tenantId, legalEntities.id], name: "proposal_entities_entity_fk" }),
+    foreignKey({ columns: [t.tenantId, t.setBy], foreignColumns: [users.tenantId, users.id], name: "proposal_entities_user_fk" }),
+    check("proposal_entities_source", sql`${t.source} IN ('assignment', 'uploader', 'file', 'reviewer')`),
+  ],
+);
+
 /** Standardized rows an extraction proposal would produce, each traceable to its source cell. */
 export const extractedRows = pgTable(
   "extracted_rows",
