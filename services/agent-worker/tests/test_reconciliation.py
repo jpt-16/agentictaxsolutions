@@ -15,11 +15,12 @@ LETTER = ("BALANCE CONFIRMATION Northwind France SAS (the Company) hereby confir
           "Intercompany payable: EUR 340,000.00 (invoice dated 2025-11-30). Signed on behalf of Northwind France SAS.")
 
 
-def tb_proposal(rows, sheet="NWG - EUR", currency="EUR", name="germany.xlsx") -> RelatedProposal:
+def tb_proposal(rows, sheet="NWG - EUR", currency="EUR", name="germany.xlsx", entity=None, row_total=None) -> RelatedProposal:
     rr = [{"position": i + 1, "sheet": sheet, "source_row": i + 5, "values": {"account_code": c, "account_name": n, "debit": d, "credit": cr},
            "cells": {"account_code": f"A{i + 5}", "debit": f"C{i + 5}", "credit": f"D{i + 5}"}, "issues": []} for i, (c, n, d, cr) in enumerate(rows)]
     meta = {"currency": currency} if currency else {}
-    return RelatedProposal(id=uuid4(), schema_key="trial_balance", payload={"sheet": sheet, "metadata": meta}, file_name=name, item_title="Trial balance", rows=rr)
+    return RelatedProposal(id=uuid4(), schema_key="trial_balance", payload={"sheet": sheet, "metadata": meta}, file_name=name, item_title="Trial balance", rows=rr,
+                           entity=entity, row_total=row_total)
 
 
 def doc_proposal(amounts, excerpt=LETTER, doc_type="Balance confirmation", name="letter.pdf") -> RelatedProposal:
@@ -101,9 +102,9 @@ class FakeRelated:
     def related(self, proposal_id): return self.rel
 
 
-def run_agent(proposals, self_id=None, settings=None):
+def run_agent(proposals, self_id=None, settings=None, entities=None):
     self_id = self_id or proposals[0].id
-    rel = RelatedSet(self_id=self_id, request_reference="TX-1", tax_year=2025, rule_settings=settings or {}, external_llm_enabled=False, proposals=proposals)
+    rel = RelatedSet(self_id=self_id, request_reference="TX-1", tax_year=2025, rule_settings=settings or {}, external_llm_enabled=False, proposals=proposals, entities=entities or [])
     ctx = RunContext(tenant_id=uuid4(), run_id=uuid4(), triggered_by_event="proposal.accepted", llm=FakeGateway(), related=FakeRelated(rel))
     payload = ProposalAccepted.model_validate({"proposalId": self_id, "fileId": uuid4(), "requestId": uuid4(), "itemId": uuid4(), "schema": "trial_balance"})
     return ReconciliationAgent().run(ctx, payload), payload
@@ -146,3 +147,97 @@ def test_a_proposal_that_is_not_the_jobs_own_yields_nothing():
     ctx = RunContext(tenant_id=uuid4(), run_id=uuid4(), triggered_by_event="proposal.accepted", llm=FakeGateway(), related=FakeRelated(None))
     payload = ProposalAccepted.model_validate({"proposalId": uuid4(), "fileId": uuid4(), "requestId": uuid4(), "itemId": uuid4(), "schema": "trial_balance"})
     assert rel and ReconciliationAgent().run(ctx, payload).meta.status == "skipped"
+
+
+# ------------------------------------------------------------------------------- entity-aware: two entities' books against each other
+DE = {"id": str(uuid4()), "code": "NWG", "name": "Northwind GmbH", "source": "file"}
+FR = {"id": str(uuid4()), "code": "NWF", "name": "Northwind France SAS", "source": "file"}
+UK = {"id": str(uuid4()), "code": "NWU", "name": "Northwind UK Ltd.", "source": "assignment"}
+ENTITIES = [{k: e[k] for k in ("id", "code", "name")} for e in (DE, FR, UK)]
+DE_BOOKS = [("1000", "Cash", "160000", "0"), ("1500", "Intercompany receivable - Northwind France SAS", "340000", "0"), ("3000", "Capital", "0", "500000")]
+FR_BOOKS = [("1000", "Cash", "500000", "0"), ("2500", "Intercompany payable - Northwind GmbH", "0", "340000"), ("3000", "Capital", "0", "160000")]
+
+
+def mirror_of(a_rows, b_rows, **kw):
+    a = tb_proposal(a_rows, sheet="DE", name="de.xlsx", entity=DE, **kw.get("a", {}))
+    b = tb_proposal(b_rows, sheet="FR", name="fr.xlsx", entity=FR, **kw.get("b", {}))
+    return reconcile(load([a, b], ENTITIES))
+
+
+def test_two_entities_that_mirror_each_other_are_recorded_as_agreeing():
+    d = mirror_of(DE_BOOKS, FR_BOOKS)
+    assert rules_of(d) == ["rc_agreement"] and d[0].severity == "info"
+    assert "Northwind GmbH and Northwind France SAS agree" in d[0].title and d[0].metrics["net_a"] == "340000" and d[0].metrics["net_b"] == "-340000"
+
+
+def test_a_difference_between_the_two_sides_is_reported_with_the_amount():
+    fr = [FR_BOOKS[0], ("2500", "Intercompany payable - Northwind GmbH", "0", "335000"), FR_BOOKS[2]]
+    d = mirror_of(DE_BOOKS, fr)
+    assert rules_of(d) == ["rc_mirror"] and d[0].severity == "warning"
+    assert d[0].metrics["difference"] == "5000" and "differ by 5,000" in d[0].title
+    assert {e["sheet"] for e in d[0].evidence} == {"DE", "FR"}
+
+
+def test_both_entities_recording_the_same_side_is_called_out():
+    fr = [FR_BOOKS[0], ("1500", "Intercompany receivable - Northwind GmbH", "340000", "0"), FR_BOOKS[2]]
+    d = mirror_of(DE_BOOKS, fr)
+    assert rules_of(d) == ["rc_mirror"] and "both record the balance as a receivable" in d[0].title
+
+
+def test_an_entity_that_records_a_balance_the_other_does_not_is_flagged_only_when_the_other_book_was_fully_read():
+    fr_none = [FR_BOOKS[0], FR_BOOKS[2]]
+    d = mirror_of(DE_BOOKS, fr_none)
+    assert rules_of(d) == ["rc_mirror"] and "Northwind France SAS's books show none" in d[0].title
+    # a capped read of the other trial balance proves nothing about absence
+    assert mirror_of(DE_BOOKS, fr_none, b={"row_total": 5000}) == []
+
+
+def test_different_currencies_are_not_compared():
+    d = mirror_of(DE_BOOKS, FR_BOOKS, b={"currency": "USD"})
+    assert rules_of(d) == ["rc_currency"] and "different currencies" in d[0].title
+
+
+def test_a_shared_brand_alone_does_not_pair_the_wrong_entities():
+    # UK's books mention "Northwind UK", which must not be read as a balance with Northwind GmbH just because both start with "Northwind".
+    uk = tb_proposal([("1000", "Cash", "1", "0"), ("2500", "Intercompany payable - Northwind UK Ltd.", "0", "7")], sheet="UK", name="uk.xlsx", entity=UK)
+    de = tb_proposal(DE_BOOKS, sheet="DE", name="de.xlsx", entity=DE)
+    assert reconcile(load([de, uk], ENTITIES)) == []
+
+
+def test_trial_balances_without_a_confirmed_entity_are_never_paired():
+    a, b = tb_proposal(DE_BOOKS, sheet="DE"), tb_proposal(FR_BOOKS, sheet="FR")
+    assert reconcile(load([a, b], ENTITIES)) == []
+
+
+def test_each_pair_is_compared_once_and_in_a_stable_order_for_deduplication():
+    a, b = tb_proposal(DE_BOOKS, sheet="DE", entity=DE), tb_proposal(FR_BOOKS, sheet="FR", entity=FR)
+    d1, d2 = reconcile(load([a, b], ENTITIES)), reconcile(load([b, a], ENTITIES))
+    assert len(d1) == len(d2) == 1
+
+
+def test_the_rule_can_be_switched_off_and_its_tolerance_changed():
+    fr = [FR_BOOKS[0], ("2500", "Intercompany payable - Northwind GmbH", "0", "339990"), FR_BOOKS[2]]
+    a, b = tb_proposal(DE_BOOKS, sheet="DE", entity=DE), tb_proposal(fr, sheet="FR", entity=FR)
+    off = load([a, b], ENTITIES); off.settings = {"rc_mirror": {"enabled": False, "params": {"tolerance": "0"}}}
+    assert reconcile(off) == []
+    loose = load([a, b], ENTITIES); loose.settings = {"rc_mirror": {"enabled": True, "params": {"tolerance": "10"}}}
+    assert rules_of(reconcile(loose)) == ["rc_agreement"]
+
+
+def test_the_agent_compares_two_entities_even_without_any_letter():
+    a, b = tb_proposal(DE_BOOKS, sheet="DE", entity=DE), tb_proposal(FR_BOOKS, sheet="FR", entity=FR)
+    res, _ = run_agent([a, b], self_id=b.id, entities=ENTITIES)
+    assert res.meta.status == "succeeded" and res.proposals and "2 entities" in (res.meta.detail or "")
+    assert res.proposals[0].payload["dedupe"].startswith("mirror|")
+
+
+def test_the_agent_still_skips_when_nothing_can_be_compared():
+    only = tb_proposal(DE_BOOKS, sheet="DE", entity=DE)
+    res, _ = run_agent([only], entities=ENTITIES)
+    assert res.meta.status == "skipped"
+
+
+def test_when_the_entity_is_known_the_direction_finding_says_whose_books_these_are():
+    tb = tb_proposal(PAYABLE_BOOKS, entity=DE)
+    d = reconcile(load([tb, doc_proposal(["EUR 340,000.00"])], ENTITIES))
+    assert rules_of(d) == ["rc_direction"] and "belonging to Northwind GmbH" in d[0].suggestion and "cannot tell which entity" not in d[0].suggestion

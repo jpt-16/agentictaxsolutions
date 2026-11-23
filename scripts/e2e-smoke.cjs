@@ -454,8 +454,55 @@ const BASE = process.env.BASE_URL ?? "http://localhost:3000";
   const f = await page.locator("body").innerText();
   assert.match(f, /EUR 340,000\.00/);
   assert.match(f, /Northwind France SAS/);
-  assert.match(f, /cannot tell which entity a trial balance belongs to/); // it states what it does not know
+  assert.match(f, /confirmed as belonging to Northwind GmbH/); // accepting the trial balance confirmed its entity (named in the sheet's title), so the finding says whose books these are
   step("a letter and a trial balance in one request were reconciled by a second agent; the first agent's finding survived; currency is shown");
+  await logout();
+
+  // ===== Two entities' books compared with each other: Germany says it is owed 340,000 by France; France says it owes 335,000 =====
+  await login("Marcus Hale");
+  await page.goto(`${BASE}/requests/new`);
+  await page.fill("#title", "E2E intercompany mirror – Germany and France");
+  await page.fill("#due", "2027-03-15");
+  await page.fill('[aria-label="Item 1 title"]', "Germany trial balance");
+  await page.click('button:has-text("Add item")');
+  await page.fill('[aria-label="Item 2 title"]', "France trial balance");
+  await page.click('label:has-text("Accounting – Americas") input');
+  await page.click('button:has-text("Publish request")');
+  await page.waitForURL(/\/requests\/[0-9a-f-]{36}/);
+  const mirUrl = page.url();
+  await logout();
+  await login("Sam Whitfield");
+  await page.goto(mirUrl);
+  for (const [title, file] of [["Germany trial balance", "intercompany-pair-germany.xlsx"], ["France trial balance", "intercompany-pair-france.xlsx"]]) {
+    await item(title).locator("textarea").fill("Attached.");
+    await item(title).locator('input[type="file"]').setInputFiles({ name: file, mimeType: XLSX_MIME, buffer: fs.readFileSync(path.join(SAMPLES, file)) });
+    await btn(title, "Submit").click();
+    await item(title).getByText(file).waitFor();
+  }
+  await logout();
+  execSync(WORKER, { cwd: path.join(__dirname, "../services/agent-worker"), stdio: "pipe", env: process.env });
+  await login("Naomi Clarke");
+  await page.goto(`${BASE}/review`);
+  await page.locator("tr", { hasText: "intercompany-pair-germany.xlsx" }).getByRole("link").first().click();
+  await page.waitForSelector("text=Whose books this trial balance is");
+  assert.match(await page.locator("body").innerText(), /Northwind GmbH \(NWG\)[\s\S]*Suggested from text in the file/); // the entity is read from the sheet title and shown with its evidence
+  await page.getByRole("button", { name: "Accept as correctly read" }).click();
+  await page.getByText("Accepted", { exact: true }).first().waitFor();
+  execSync(WORKER, { cwd: path.join(__dirname, "../services/agent-worker"), stdio: "pipe", env: process.env }); // only one entity so far: nothing to compare
+  await page.goto(`${BASE}/review`);
+  await page.locator("tr", { hasText: "intercompany-pair-france.xlsx" }).getByRole("link").first().click();
+  await page.getByRole("button", { name: "Accept as correctly read" }).click();
+  await page.getByText("Accepted", { exact: true }).first().waitFor();
+  execSync(WORKER, { cwd: path.join(__dirname, "../services/agent-worker"), stdio: "pipe", env: process.env }); // reconciliation compares the two entities
+  await page.goto(`${BASE}/review?kind=finding`);
+  const mirror = page.locator("tr", { hasText: "differ by 5,000 on their intercompany balance" });
+  await mirror.waitFor();
+  await mirror.getByRole("link").first().click();
+  await page.waitForSelector("text=Suggested next step");
+  const m = await page.locator("body").innerText();
+  assert.match(m, /Northwind GmbH carries 340,000 as a receivable/);
+  assert.match(m, /Northwind France SAS carries 335,000 as a payable/);
+  step("two entities' trial balances were each given an entity from the sheet title, and their intercompany balances were compared: a 5,000 difference was found");
   await logout();
 
   // Administration: AI governance switches and people management (tenant admin only)

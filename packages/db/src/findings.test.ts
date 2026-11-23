@@ -171,6 +171,23 @@ describe("agent_get_related (cross-file read for reconciliation)", () => {
     expect(r.tenant).toEqual({ external_llm_enabled: false });
   });
 
+  it("includes the legal entity a person confirmed for a trial balance, and the tenant's entity list", async () => {
+    const f = await createFileFixture(owner, A);
+    const tb = await extractionOf(A, f, "trial_balance", "pending");
+    const g = await createFileInRequest(owner, A, f);
+    const tb2 = await extractionOf(A, g, "trial_balance");
+    // As the product does it: a reviewer sets the entity while the result is pending, then accepts it.
+    await withTenant(app.db, { tenantId: A.tenantId, userId: A.users.reviewer }, async (tx) => {
+      await tx.execute(sql`insert into proposal_entities (proposal_id, tenant_id, entity_id, source, set_by) values (${tb}, ${A.tenantId}, ${A.entityId}, 'file', ${A.users.reviewer})`);
+      await tx.execute(sql`update proposals set status = 'accepted', decided_by = ${A.users.reviewer}, decided_at = now() where id = ${tb}`);
+    });
+    const r = await related(await validationJob(A, f, tb));
+    const byId = Object.fromEntries(r.proposals.map((p: any) => [p.id, p]));
+    expect(byId[tb].entity).toEqual({ id: A.entityId, code: "TE1", name: "Test Entity", source: "file" });
+    expect(byId[tb2].entity).toBeNull();                                           // not confirmed: nothing is guessed
+    expect(r.entities).toEqual([{ id: A.entityId, code: "TE1", name: "Test Entity" }]);
+  });
+
   it("never reaches another request, another tenant, or a job the worker does not hold", async () => {
     const f = await createFileFixture(owner, A);
     const other = await createFileFixture(owner, A);                               // a different request in the same tenant

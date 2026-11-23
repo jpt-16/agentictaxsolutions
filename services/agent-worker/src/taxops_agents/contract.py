@@ -109,6 +109,7 @@ class RelatedProposal(BaseModel):
     item_title: str
     rows: list[dict[str, Any]] = Field(default_factory=list)
     row_total: int | None = None  # how many rows the trial balance has; more than len(rows) means the read was capped
+    entity: dict[str, Any] | None = None  # the legal entity a person confirmed this trial balance belongs to: id, code, name, source
 
 
 class RelatedSet(BaseModel):
@@ -119,6 +120,7 @@ class RelatedSet(BaseModel):
     rule_settings: dict[str, dict[str, Any]]
     external_llm_enabled: bool
     proposals: list[RelatedProposal]
+    entities: list[dict[str, Any]] = Field(default_factory=list)  # every legal entity of the tenant (id, code, name), for matching names in account titles
 
 
 @runtime_checkable

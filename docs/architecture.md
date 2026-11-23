@@ -189,6 +189,16 @@ Not run: OWASP ZAP / Burp, Lighthouse, WebKit/Safari (not installed in the test 
 
 **Accepted residual risk:** identity and tenant reach the database through session settings the application sets, so a SQL injection bug would equal tenant compromise. All queries are parameterized and the fuzz sweep found no injection, but keep it that way.
 
+## Entity per trial balance
+
+A trial balance now carries the legal entity it belongs to, so reconciliation can compare one entity's books with another's instead of assuming whose books a file is.
+
+- **Evidence, weighed in this order** (`packages/core/src/entities.ts`, plain string matching, no model): text in the file that names an entity (sheet title rows, sheet name, file name), then the request's assignment (if it was sent to exactly one entity), then the uploader's own entity. A brand shared by every entity ("Northwind") never identifies one by itself.
+- **Conflicts are never resolved silently.** If the file names an entity the request was not sent to, or there is no evidence, the status is "conflict" or "unknown" and the reviewer must choose before the result can be accepted. Where the evidence is clear, accepting the result confirms the suggested entity.
+- **Stored in `proposal_entities`** (migration 0019/0020): one row per trial balance, written only by a reviewer's decision, only while the result is pending, frozen once decided. Both rules are enforced by a database trigger, not only the service. Every change is audited (`proposal.entity_set`, `proposal.entity_confirmed`).
+- **Reconciliation** reads it through `agent_get_related`. New rule `rc_mirror`: for each pair of entities, what A says it is owed by B must equal what B says it owes A, on opposite sides. It reports a difference, both entities recording the same side, or a balance one entity records and the other does not (only when the other trial balance was read in full). Agreements are recorded as `rc_agreement`; different currencies are reported, not compared. It runs even when the request has no confirmation letter.
+- **Limits.** Matching accounts to an entity relies on the account title naming the counterparty ("Intercompany payable - Northwind GmbH"). Titles that do not name it are not paired. Only trial balances a person accepted take part, and only within one request.
+
 ## Known limitations (read before production)
 
 **Security and identity**

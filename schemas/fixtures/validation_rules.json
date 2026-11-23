@@ -114,6 +114,15 @@
     "params": {}
   },
   {
+    "id": "rc_mirror",
+    "name": "Entities agree on what they owe each other",
+    "description": "Two entities' trial balances both carry an intercompany balance with each other. What one is owed must equal what the other owes, on opposite sides.",
+    "severity": "warning",
+    "params": {
+      "tolerance": "0"
+    }
+  },
+  {
     "id": "rc_agreement",
     "name": "Agreements are recorded",
     "description": "Records when a confirmation agrees with an account, so a reviewer can see what was checked and not only what failed.",

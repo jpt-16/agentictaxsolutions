@@ -6,6 +6,7 @@ Everything here is invented for testing. Regenerate with `python3 scripts/make-s
 |---|---|---|
 | `messy-trial-balance-germany.xlsx` | A contributor uploads it to a trial-balance item | The extraction agent finds the table (the "Cover" sheet is ignored). After a reviewer **accepts** the extraction, validation raises 5 findings (below) |
 | `clean-trial-balance-france.xlsx` | Same | Extracts cleanly; validation raises nothing |
+| `intercompany-pair-germany.xlsx` + `intercompany-pair-france.xlsx` | Upload both to two trial-balance items in one request, then accept each as a reviewer | Each is given its entity from the sheet title (shown in the **Entity** card). Once both are accepted, reconciliation compares them: Germany says it is owed 340,000, France says it owes 335,000, and the finding reads "differ by 5,000 on their intercompany balance" |
 | `balance-confirmation.docx` / `.pdf` / `.txt` | A contributor uploads one to any item | The document agent reports "Balance confirmation", the amount `EUR 340,000.00`, four dates and signature wording. A reviewer checks it against the original and accepts |
 
 ## What the messy file contains on purpose

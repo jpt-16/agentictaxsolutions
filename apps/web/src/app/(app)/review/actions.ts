@@ -1,6 +1,6 @@
 "use server";
 import { revalidatePath } from "next/cache";
-import { decideProposal, getProposal, reprocessFile, requestChangesFromFinding, requestRemap } from "@taxops/services";
+import { decideProposal, getProposal, reprocessFile, requestChangesFromFinding, requestRemap, setProposalEntity } from "@taxops/services";
 import { requireContext } from "@/lib/auth";
 import { guard, type ActionResult } from "@/lib/actions";
 
@@ -35,5 +35,12 @@ export async function reprocessFileAction(fileId: string, requestId: string): Pr
   const ctx = await requireContext();
   const r = await guard(() => reprocessFile(ctx, fileId));
   revalidatePath(`/requests/${requestId}`); revalidatePath("/review");
+  return r;
+}
+
+export async function setProposalEntityAction(proposalId: string, entityId: string): Promise<ActionResult> {
+  const ctx = await requireContext();
+  const r = await guard(() => setProposalEntity(ctx, proposalId, entityId));
+  revalidatePath(`/review/${proposalId}`);
   return r;
 }

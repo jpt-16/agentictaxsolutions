@@ -3,6 +3,7 @@
   samples/messy-trial-balance-germany.xlsx   deliberately flawed: raises validation findings (see samples/README.md)
   samples/clean-trial-balance-france.xlsx    balanced and tidy: extracts cleanly
   samples/balance-confirmation.docx/.pdf/.txt   a supporting document for the document agent
+  samples/intercompany-pair-germany.xlsx + intercompany-pair-france.xlsx   two entities whose intercompany balances differ by 5,000
 """
 from __future__ import annotations
 
@@ -98,6 +99,19 @@ def build() -> None:
     wb.save(OUT / "clean-trial-balance-france.xlsx")
 
 
+# ---------------------------------------------------------------- two entities that should mirror each other, but are 5,000 apart
+PAIR_DE = [["1000", "Cash", 160000, 0], ["1500", "Intercompany receivable - Northwind France SAS", 340000, 0], ["3000", "Share capital", 0, 500000]]
+PAIR_FR = [["1000", "Cash", 505000, 0], ["2500", "Intercompany payable - Northwind GmbH", 0, 335000], ["3000", "Share capital", 0, 170000]]
+
+
+def build_pair() -> None:
+    for name, sheet_name, title, rows in (("intercompany-pair-germany.xlsx", "NWG - EUR", "Northwind GmbH - Trial Balance", PAIR_DE),
+                                          ("intercompany-pair-france.xlsx", "NWF - EUR", "Northwind France SAS - Trial Balance", PAIR_FR)):
+        wb = Workbook(); wb.remove(wb.active)
+        sheet(wb, sheet_name, [[title], ["As at 31 Dec 2025", "", "Currency: EUR"], []], ["GL Account", "Account Description", "Debit (EUR)", "Credit (EUR)"], rows, True)
+        wb.save(OUT / name)
+
+
 # ---------------------------------------------------------------- supporting document
 CONFIRMATION = [
     "BALANCE CONFIRMATION",
@@ -137,6 +151,7 @@ def pdf_bytes(lines: list[str]) -> bytes:
 
 if __name__ == "__main__":
     build()
+    build_pair()
     (OUT / "balance-confirmation.docx").write_bytes(docx_bytes(CONFIRMATION))
     (OUT / "balance-confirmation.pdf").write_bytes(pdf_bytes(CONFIRMATION))
     (OUT / "balance-confirmation.txt").write_text("\n".join(CONFIRMATION) + "\n")

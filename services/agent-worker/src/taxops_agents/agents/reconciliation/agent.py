@@ -32,10 +32,11 @@ class ReconciliationAgent(Agent[ProposalAccepted, AgentResult]):
         rel = ctx.related.related(payload.proposalId)
         if rel is None:
             return AgentResult(meta=RunMeta(status="skipped", detail="No accepted extraction found for this event.", duration_ms=elapsed()))
-        data = load(rel.proposals)
+        data = load(rel.proposals, rel.entities)
         data.settings = rel.rule_settings
-        if not data.docs or not data.tbs:
-            need = "accepted balance confirmation" if not data.docs else "accepted trial balance"
+        entity_tbs = [t for t in data.tbs if t.entity_id]
+        if (not data.docs or not data.tbs) and len(entity_tbs) < 2:
+            need = "accepted balance confirmation" if not data.docs and data.tbs else "accepted trial balance" if not data.tbs else "second entity's trial balance"
             return AgentResult(meta=RunMeta(status="skipped", detail=f"Nothing to reconcile yet: this request has no {need}.", duration_ms=elapsed()))
         drafts = reconcile(data)
         proposals = []
@@ -52,6 +53,7 @@ class ReconciliationAgent(Agent[ProposalAccepted, AgentResult]):
                 evidence=[Evidence(sheet=e["sheet"], cell_range=",".join(e["cells"]), note=e["note"]) for e in d.evidence],
             ))
         counts = {s: sum(1 for d in drafts if d.severity == s) for s in ("error", "warning", "info")}
-        detail = (f"Compared {len(data.docs)} confirmation(s) with {len(data.tbs)} trial balance(s): "
+        detail = (f"Compared {len(data.docs)} confirmation(s) with {len(data.tbs)} trial balance(s)"
+                  + (f" and {len(entity_tbs)} entities with each other" if len(entity_tbs) > 1 else "") + ": "
                   + (", ".join(f"{n} {s}" for s, n in counts.items() if n) if drafts else "no findings"))
         return AgentResult(proposals=proposals, meta=RunMeta(status="succeeded", detail=detail, duration_ms=elapsed()))

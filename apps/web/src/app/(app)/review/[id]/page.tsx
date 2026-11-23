@@ -8,6 +8,7 @@ import { requireContext } from "@/lib/auth";
 import { decimalDiff, formatAmount } from "@/lib/decimal";
 import { Badge, Card, CardHeader, ConfidencePill, PageHeader, SeverityBadge, cn, formatDateTime } from "@/components/ui";
 import { DecisionForm, SendBack } from "./decision";
+import { EntityPanel } from "./entity-panel";
 import { RemapForm } from "./remap-form";
 import { ReprocessButton } from "../reprocess";
 import { FindingView } from "./finding-view";
@@ -174,6 +175,19 @@ export default async function ProposalPage({ params, searchParams }: { params: P
               </div>
             )}
           </Card>
+
+          {p.entity && p.entity.options.length > 0 && (() => {
+            const st = p.entity!;
+            const label = (e: { name: string; code: string }) => `${e.name} (${e.code})`;
+            return (
+              <Card>
+                <CardHeader title="Entity" subtitle="Whose books this trial balance is" />
+                <EntityPanel proposalId={p.id} canEdit={p.can.decide} options={st.options} status={st.resolution.status} note={st.resolution.note}
+                  chosen={st.chosen ? { id: st.chosen.entity.id, label: label(st.chosen.entity), source: st.chosen.source } : null}
+                  suggestion={st.resolution.suggestion ? { id: st.resolution.suggestion.entity.id, label: label(st.resolution.suggestion.entity), source: st.resolution.suggestion.source } : null} />
+              </Card>
+            );
+          })()}
 
           {sheetRows && pl && (
             <Card>
